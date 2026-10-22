@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { hasActiveSubscription } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 
 export async function addScore(formData: FormData) {
@@ -13,6 +14,7 @@ export async function addScore(formData: FormData) {
   if (!user) {
     throw new Error("Unauthorized");
   }
+  if (!(await hasActiveSubscription())) throw new Error("An active GoodSwing membership is required.");
 
   const score = Number(formData.get("score"));
   const playedAt = String(formData.get("playedAt") ?? "").trim();
@@ -78,6 +80,7 @@ export async function updateScore(id: string, formData: FormData) {
   if (!user) {
     throw new Error("Unauthorized");
   }
+  if (!(await hasActiveSubscription())) throw new Error("An active GoodSwing membership is required.");
 
   const score = Number(formData.get("score"));
   const playedAt = String(formData.get("playedAt") ?? "").trim();

@@ -9,20 +9,7 @@ import { createClient } from "@/lib/supabase/server";
 
 import SubscriptionCheckout from "@/components/payment/SubscriptionCheckout";
 
-const PLANS = [
-  {
-    id: "monthly" as const,
-    name: "Monthly",
-    price: 499,
-    description: "Flexible month-to-month access.",
-  },
-  {
-    id: "yearly" as const,
-    name: "Yearly",
-    price: 4990,
-    description: "Best value for long-term members.",
-  },
-];
+
 
 export default async function SubscriptionPage() {
   await requireUser();
@@ -31,6 +18,21 @@ export default async function SubscriptionPage() {
   const active = await hasActiveSubscription();
 
   const supabase = await createClient();
+
+  const { data: plans, error: plansError } = await supabase
+    .from("plans")
+    .select("id, name, price_paise, interval")
+    .eq("active", true)
+    .order("sort_order");
+
+  if (plansError) throw new Error("Unable to load membership plans.");
+
+  const checkoutPlans = (plans ?? []).map((plan) => ({
+    id: plan.id,
+    name: plan.name,
+    price: Number(plan.price_paise) / 100,
+    description: plan.interval === "year" ? "Best value for long-term members." : "Flexible month-to-month access.",
+  }));
 
   const { data: charities, error } = await supabase
     .from("charities")
@@ -203,7 +205,7 @@ export default async function SubscriptionPage() {
 
               <div className="rounded-3xl border bg-card p-6 md:p-8">
                 <SubscriptionCheckout
-                  plans={PLANS}
+                  plans={checkoutPlans}
                   charities={charities ?? []}
                 />
               </div>

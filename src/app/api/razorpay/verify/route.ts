@@ -5,15 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { razorpay } from "@/lib/razorpay";
 
-const PLANS = {
-  monthly: {
-    amount: 49900,
-  },
 
-  yearly: {
-    amount: 499000,
-  },
-} as const;
 
 export async function POST(
   request: Request
@@ -135,10 +127,7 @@ export async function POST(
         razorpay_order_id
       );
 
-    const orderPlan =
-      order.notes?.plan as
-        | keyof typeof PLANS
-        | undefined;
+    const orderPlan = String(order.notes?.plan || "");
 
     const charityId =
       order.notes?.charity_id;
@@ -149,10 +138,14 @@ export async function POST(
           ?.charity_percentage
       );
 
-    if (
-      !orderPlan ||
-      !PLANS[orderPlan]
-    ) {
+    const { data: selectedPlan, error: planError } = await createAdminClient()
+      .from("plans")
+      .select("id, name, price_paise, interval, active")
+      .eq("id", orderPlan)
+      .eq("active", true)
+      .single();
+
+    if (planError || !selectedPlan) {
       return NextResponse.json(
         {
           error:
@@ -168,12 +161,11 @@ export async function POST(
     // 5. Validate amount and currency
     // ========================================================
 
-    const selectedPlan =
-      PLANS[orderPlan];
+
 
     if (
       Number(order.amount) !==
-        selectedPlan.amount ||
+        Number(selectedPlan.price_paise) ||
       order.currency !==
         "INR"
     ) {
@@ -311,7 +303,7 @@ export async function POST(
 
     const charityAmountPaise =
       Math.floor(
-        (selectedPlan.amount *
+         (Number(selectedPlan.price_paise) *
           percentage) /
           100
       );
@@ -326,10 +318,7 @@ export async function POST(
     const periodEnd =
       new Date(now);
 
-    if (
-      orderPlan ===
-      "monthly"
-    ) {
+    if (selectedPlan.interval === "month") {
       periodEnd.setMonth(
         periodEnd.getMonth() +
           1
@@ -366,7 +355,7 @@ export async function POST(
               "active",
 
             amount:
-              selectedPlan.amount /
+              Number(selectedPlan.price_paise) /
               100,
 
             charity_id:
@@ -445,7 +434,7 @@ export async function POST(
             orderPlan,
 
           amount_paise:
-            selectedPlan.amount,
+            Number(selectedPlan.price_paise),
 
           charity_id:
             charityId,
@@ -554,7 +543,7 @@ export async function POST(
         orderPlan,
 
       amount:
-        selectedPlan.amount,
+        Number(selectedPlan.price_paise),
 
       charityId,
 

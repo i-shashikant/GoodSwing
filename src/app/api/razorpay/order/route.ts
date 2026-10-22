@@ -4,17 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { razorpay } from "@/lib/razorpay";
 
-const PLANS = {
-  monthly: {
-    amount: 49900,
-    name: "GoodSwing Monthly",
-  },
 
-  yearly: {
-    amount: 499000,
-    name: "GoodSwing Yearly",
-  },
-} as const;
 
 export async function POST(
   request: Request
@@ -94,8 +84,7 @@ export async function POST(
     const body =
       await request.json();
 
-    const plan =
-      body.plan as keyof typeof PLANS;
+    const plan = String(body.plan || "");
 
     const charityId =
       String(
@@ -111,7 +100,14 @@ export async function POST(
     // 4. Validate plan
     // -----------------------------------------
 
-    if (!PLANS[plan]) {
+    const { data: selectedPlan, error: planError } = await admin
+      .from("plans")
+      .select("id, name, price_paise, active")
+      .eq("id", plan)
+      .eq("active", true)
+      .single();
+
+    if (planError || !selectedPlan) {
       return NextResponse.json(
         {
           error:
@@ -203,13 +199,10 @@ export async function POST(
     // 8. Create Razorpay order
     // -----------------------------------------
 
-    const selectedPlan =
-      PLANS[plan];
-
     const order =
       await razorpay.orders.create({
         amount:
-          selectedPlan.amount,
+          Number(selectedPlan.price_paise),
 
         currency:
           "INR",
@@ -245,7 +238,7 @@ export async function POST(
         order.id,
 
       amount:
-        selectedPlan.amount,
+        Number(selectedPlan.price_paise),
 
       currency:
         "INR",

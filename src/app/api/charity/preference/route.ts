@@ -65,6 +65,8 @@ export async function POST(request: Request) {
     );
   }
 
+  await supabase.from("subscriptions").update({ charity_id: charityId }).eq("user_id", user.id);
+
   return NextResponse.redirect(
     new URL("/dashboard/charity?saved=true", request.url)
   );

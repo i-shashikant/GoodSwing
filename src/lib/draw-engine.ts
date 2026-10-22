@@ -130,7 +130,11 @@ export function generateDrawNumbers(
     let randomWeight =
       Math.random() * totalWeight;
 
-    for (let index = 0; index < pool.length; index++) {
+    for (
+      let index = 0;
+      index < pool.length;
+      index++
+    ) {
       const number = pool[index];
 
       randomWeight -=
@@ -208,40 +212,55 @@ export async function getEligibleParticipants(
   }
 
   type SubscriptionRow = {
-  user_id: string;
-  current_period_start: string | null;
-  current_period_end: string | null;
-};
+    user_id: string;
+    plan: string;
+    amount: number | string | null;
+    status: string;
+    current_period_start: string | null;
+    current_period_end: string | null;
+  };
 
   const activeSubscriptions: SubscriptionRow[] = [];
 
   for (const row of subscriptions ?? []) {
-    const subscription = row as unknown as SubscriptionRow;
+    const subscription =
+      row as unknown as SubscriptionRow;
 
     const startsBeforeDraw =
       !subscription.current_period_start ||
-      new Date(subscription.current_period_start) <= eligibilityDate;
+      new Date(
+        subscription.current_period_start
+      ) <= eligibilityDate;
 
     const endsAfterDraw =
       !subscription.current_period_end ||
-      new Date(subscription.current_period_end) >= eligibilityDate;
+      new Date(
+        subscription.current_period_end
+      ) >= eligibilityDate;
 
-    if (startsBeforeDraw && endsAfterDraw) {
-      activeSubscriptions.push(subscription);
+    if (
+      startsBeforeDraw &&
+      endsAfterDraw
+    ) {
+      activeSubscriptions.push(
+        subscription
+      );
     }
   }
 
-  const activeUserIds = activeSubscriptions.map(
-    (subscription) => subscription.user_id
-  );
+  const activeUserIds =
+    activeSubscriptions.map(
+      (subscription) =>
+        subscription.user_id
+    );
 
-    if (activeUserIds.length === 0) {
-      return {
-        participants: [] as Participant[],
-        totalSubscribers: 0,
-        activeSubscriptions,
-      };
-    }
+  if (activeUserIds.length === 0) {
+    return {
+      participants: [] as Participant[],
+      totalSubscribers: 0,
+      activeSubscriptions,
+    };
+  }
 
   // ----------------------------------------------------------
   // 2. Fetch profiles
@@ -511,16 +530,57 @@ export async function simulateDraw(
   let basePrizePool =
     Number(draw.prize_pool) || 0;
 
-  // If admin entered 0, calculate automatically.
-  //
-  // ₹499 membership × 50% allocated to prize pool
-  // = approximately ₹250 per active subscriber.
+  // If admin entered 0, calculate automatically
+  // from the active subscriptions and the
+  // database-configured pool contribution percentage.
   if (
     basePrizePool === 0 &&
     totalSubscribers > 0
   ) {
+    const {
+      data: setting,
+    } = await admin
+      .from("app_settings")
+      .select("value")
+      .eq(
+        "key",
+        "pool_contribution_pct"
+      )
+      .maybeSingle();
+
+    const poolPct = Math.max(
+      0,
+      Math.min(
+        100,
+        Number(
+          setting?.value ?? 50
+        )
+      )
+    );
+
+    let calculatedPrizePool = 0;
+
+    for (
+      const subscription of
+      (
+        await getEligibleParticipants(
+          draw.draw_date
+        )
+      ).activeSubscriptions
+    ) {
+      const amount =
+        Number(
+          subscription.amount ?? 0
+        );
+
+      calculatedPrizePool +=
+        (amount * poolPct) / 100;
+    }
+
     basePrizePool =
-      totalSubscribers * 250;
+      Math.round(
+        calculatedPrizePool
+      );
   }
 
   const effectivePool =
@@ -577,10 +637,13 @@ export async function simulateDraw(
 
     tier1: {
       poolSharePct: 40,
+
       allocatedAmount:
         tier1Amount,
+
       winnerCount:
         tier1WinnerCount,
+
       prizePerWinner:
         tier1WinnerCount > 0
           ? Math.floor(
@@ -588,19 +651,25 @@ export async function simulateDraw(
                 tier1WinnerCount
             )
           : 0,
+
       rolledOver:
         tier1WinnerCount === 0,
+
       rolloverAmount,
+
       winners:
         tier5Winners,
     },
 
     tier2: {
       poolSharePct: 35,
+
       allocatedAmount:
         tier2Amount,
+
       winnerCount:
         tier2WinnerCount,
+
       prizePerWinner:
         tier2WinnerCount > 0
           ? Math.floor(
@@ -608,16 +677,20 @@ export async function simulateDraw(
                 tier2WinnerCount
             )
           : 0,
+
       winners:
         tier4Winners,
     },
 
     tier3: {
       poolSharePct: 25,
+
       allocatedAmount:
         tier3Amount,
+
       winnerCount:
         tier3WinnerCount,
+
       prizePerWinner:
         tier3WinnerCount > 0
           ? Math.floor(
@@ -625,6 +698,7 @@ export async function simulateDraw(
                 tier3WinnerCount
             )
           : 0,
+
       winners:
         tier3Winners,
     },
@@ -922,7 +996,10 @@ export async function executeAndPublishDraw(
         new Date().toISOString(),
     })
     .eq("id", drawId)
-    .neq("status", "completed");
+    .neq(
+      "status",
+      "completed"
+    );
 
   if (updateError) {
     throw new Error(
