@@ -33,7 +33,7 @@ export function AdminSidebar({ name, email }: { name: string; email: string }) {
             onClick={() => setOpen(false)}
             className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
               active
-                ? "bg-white/15 text-white"
+                ? "bg-white/12 text-white shadow-inner"
                 : "text-emerald-100/70 hover:bg-white/10 hover:text-white"
             }`}
           >
@@ -60,7 +60,7 @@ export function AdminSidebar({ name, email }: { name: string; email: string }) {
   return (
     <>
       {/* Mobile top bar */}
-      <div className="sticky top-0 z-30 flex items-center justify-between bg-[#0f4d32] px-4 py-3 text-white md:hidden">
+      <div className="sticky top-0 z-30 flex items-center justify-between bg-[#123d2d] px-4 py-3 text-white md:hidden">
         <span className="font-bold">GoodSwing Admin</span>
         <button onClick={() => setOpen(!open)} aria-label="Toggle menu">
           {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
@@ -68,17 +68,17 @@ export function AdminSidebar({ name, email }: { name: string; email: string }) {
       </div>
 
       {open && (
-        <div className="fixed inset-x-0 top-[48px] z-20 flex flex-col gap-4 bg-[#0f4d32] px-4 pb-6 md:hidden">
+        <div className="fixed inset-x-0 top-[48px] z-20 flex flex-col gap-4 bg-[#123d2d] px-4 pb-6 md:hidden">
           {nav}
           {footer}
         </div>
       )}
 
       {/* Desktop sidebar */}
-      <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col justify-between bg-[#0f4d32] p-5 md:flex">
+      <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col justify-between bg-[#123d2d] p-5 md:flex">
         <div>
           <Link href="/admin" className="flex items-center gap-2 text-lg font-extrabold text-white">
-            <span className="grid h-8 w-8 place-items-center rounded-lg bg-white text-[#0f4d32]">G</span>
+            <span className="grid h-8 w-8 place-items-center rounded-xl bg-[#f0c95b] text-[#123d2d]">G</span>
             Admin
           </Link>
           {nav}

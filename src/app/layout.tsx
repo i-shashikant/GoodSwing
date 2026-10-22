@@ -14,9 +14,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "GoodSwing — Play Your Game. Make an Impact.",
+  title: "GoodSwing — Play Better. Win Together. Change Lives.",
   description:
-    "Play golf, participate in GoodSwing draws, and help make an impact through charitable contributions.",
+    "Track your golf performance, enter monthly prize draws, and support a charity you care about with every subscription.",
 };
 
 export default function RootLayout({
