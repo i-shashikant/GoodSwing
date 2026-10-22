@@ -1,69 +1,204 @@
-import Image from "next/image";
+import Link from "next/link";
+import {
+  ArrowRight,
+  Check,
+  Heart,
+  Trophy,
+} from "lucide-react";
 
 export default function Home() {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
+    <main className="min-h-screen">
+      {/* Navigation */}
+      <nav className="mx-auto flex max-w-7xl items-center justify-between px-6 py-6">
+        <Link
+          href="/"
+          className="text-xl font-semibold tracking-tight"
+        >
+          GoodSwing
+        </Link>
+
+        <div className="flex items-center gap-3">
+          <Link
+            href="/login"
+            className="rounded-xl px-4 py-2 text-sm font-medium transition hover:bg-muted"
+          >
+            Log in
+          </Link>
+
+          <Link
+            href="/signup"
+            className="rounded-xl bg-foreground px-4 py-2 text-sm font-medium text-background transition hover:opacity-90"
+          >
+            Get started
+          </Link>
+        </div>
+      </nav>
+
+      {/* Hero */}
+      <section className="mx-auto max-w-7xl px-6 pb-24 pt-20">
+        <div className="max-w-4xl">
+          <div className="mb-6 inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm text-muted-foreground">
+            <Heart className="h-4 w-4" />
+            Golf with a purpose
+          </div>
+
+          <h1 className="text-5xl font-semibold tracking-tight sm:text-7xl">
+            Play your game.
+            <br />
+            Make an impact.
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+
+          <p className="mt-7 max-w-2xl text-lg leading-8 text-muted-foreground sm:text-xl">
+            GoodSwing brings together your golf, monthly rewards,
+            and the causes you care about — turning participation
+            into something that gives back.
           </p>
+
+          <div className="mt-9 flex flex-wrap gap-3">
+            <Link
+              href="/signup"
+              className="inline-flex items-center gap-2 rounded-xl bg-foreground px-6 py-3.5 font-medium text-background transition hover:opacity-90"
+            >
+              Start playing
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+
+            <Link
+              href="/login"
+              className="rounded-xl border px-6 py-3.5 font-medium transition hover:bg-muted"
+            >
+              Sign in
+            </Link>
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+      </section>
+
+      {/* How it works */}
+      <section className="border-y">
+        <div className="mx-auto max-w-7xl px-6 py-20">
+          <div className="max-w-2xl">
+            <p className="text-sm font-medium text-muted-foreground">
+              HOW IT WORKS
+            </p>
+
+            <h2 className="mt-3 text-3xl font-semibold tracking-tight">
+              Simple for players.
+              <br />
+              Meaningful for causes.
+            </h2>
+          </div>
+
+          <div className="mt-12 grid gap-6 md:grid-cols-3">
+            {[
+              {
+                number: "01",
+                title: "Join",
+                text: "Choose a GoodSwing plan and become eligible for the monthly draw.",
+              },
+              {
+                number: "02",
+                title: "Play",
+                text: "Keep your recent golf scores up to date so your participation stays current.",
+              },
+              {
+                number: "03",
+                title: "Give back",
+                text: "Choose a charity and help turn GoodSwing participation into real-world impact.",
+              },
+            ].map((item) => (
+              <div
+                key={item.number}
+                className="rounded-2xl border p-7"
+              >
+                <p className="text-sm font-medium text-muted-foreground">
+                  {item.number}
+                </p>
+
+                <h3 className="mt-8 text-2xl font-semibold">
+                  {item.title}
+                </h3>
+
+                <p className="mt-3 leading-7 text-muted-foreground">
+                  {item.text}
+                </p>
+              </div>
+            ))}
+          </div>
         </div>
-      </main>
-    </div>
+      </section>
+
+      {/* Value */}
+      <section className="mx-auto max-w-7xl px-6 py-20">
+        <div className="grid gap-6 md:grid-cols-3">
+          <div className="rounded-2xl border p-7">
+            <Trophy className="h-6 w-6" />
+
+            <h3 className="mt-8 text-xl font-semibold">
+              Monthly rewards
+            </h3>
+
+            <p className="mt-3 text-sm leading-6 text-muted-foreground">
+              Eligible members can participate in GoodSwing's
+              scheduled prize draws.
+            </p>
+          </div>
+
+          <div className="rounded-2xl border p-7">
+            <Heart className="h-6 w-6" />
+
+            <h3 className="mt-8 text-xl font-semibold">
+              Choose your cause
+            </h3>
+
+            <p className="mt-3 text-sm leading-6 text-muted-foreground">
+              Support a charity that aligns with what matters to
+              you.
+            </p>
+          </div>
+
+          <div className="rounded-2xl border p-7">
+            <Check className="h-6 w-6" />
+
+            <h3 className="mt-8 text-xl font-semibold">
+              Built for transparency
+            </h3>
+
+            <p className="mt-3 text-sm leading-6 text-muted-foreground">
+              Participation, winners, and charitable contributions
+              are recorded and managed through the platform.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* CTA */}
+      <section className="border-t">
+        <div className="mx-auto max-w-7xl px-6 py-20">
+          <div className="rounded-3xl border p-8 sm:p-12">
+            <h2 className="max-w-2xl text-3xl font-semibold tracking-tight sm:text-4xl">
+              Your next round can do more.
+            </h2>
+
+            <p className="mt-4 max-w-xl leading-7 text-muted-foreground">
+              Join GoodSwing and make your game part of something
+              bigger.
+            </p>
+
+            <Link
+              href="/signup"
+              className="mt-8 inline-flex items-center gap-2 rounded-xl bg-foreground px-6 py-3.5 font-medium text-background transition hover:opacity-90"
+            >
+              Create your account
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      <footer className="border-t px-6 py-8 text-center text-sm text-muted-foreground">
+        © {new Date().getFullYear()} GoodSwing
+      </footer>
+    </main>
   );
 }

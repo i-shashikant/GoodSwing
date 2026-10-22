@@ -1,27 +1,37 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useTransition } from "react";
 import { addScore } from "@/app/dashboard/scores/actions";
+import { toast } from "sonner";
 
 export function ScoreForm() {
-  const [error, setError] = useState("");
+  const [isPending, startTransition] = useTransition();
+  const formRef = useRef<HTMLFormElement>(null);
 
-  async function handleSubmit(formData: FormData) {
-    setError("");
+  function handleSubmit(formData: FormData) {
+    startTransition(async () => {
+      try {
+        await addScore(formData);
 
-    try {
-      await addScore(formData);
-    } catch (error) {
-      setError(
-        error instanceof Error
-          ? error.message
-          : "Something went wrong."
-      );
-    }
+        formRef.current?.reset();
+
+        toast.success("Score added", {
+          description: "Your round has been added to your GoodSwing profile.",
+        });
+      } catch (error) {
+        toast.error("Couldn't add score", {
+          description:
+            error instanceof Error
+              ? error.message
+              : "Something went wrong.",
+        });
+      }
+    });
   }
 
   return (
     <form
+      ref={formRef}
       action={handleSubmit}
       className="rounded-2xl border p-6"
     >
@@ -55,6 +65,7 @@ export function ScoreForm() {
             required
             className="w-full rounded-xl border bg-transparent px-4 py-3 outline-none focus:ring-2"
             placeholder="e.g. 32"
+            disabled={isPending}
           />
 
           <p className="mt-1 text-xs text-muted-foreground">
@@ -77,21 +88,17 @@ export function ScoreForm() {
             required
             max={new Date().toISOString().split("T")[0]}
             className="w-full rounded-xl border bg-transparent px-4 py-3 outline-none focus:ring-2"
+            disabled={isPending}
           />
         </div>
       </div>
 
-      {error && (
-        <p className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-500">
-          {error}
-        </p>
-      )}
-
       <button
         type="submit"
-        className="mt-6 rounded-xl bg-foreground px-5 py-3 font-medium text-background transition hover:opacity-90"
+        disabled={isPending}
+        className="mt-6 rounded-xl bg-foreground px-5 py-3 font-medium text-background transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
       >
-        Add score
+        {isPending ? "Adding score..." : "Add score"}
       </button>
     </form>
   );

@@ -1,6 +1,8 @@
 "use client";
 
+import { useTransition } from "react";
 import { deleteScore } from "@/app/dashboard/scores/actions";
+import { toast } from "sonner";
 
 type Score = {
   id: string;
@@ -9,14 +11,25 @@ type Score = {
 };
 
 export function ScoreList({ scores }: { scores: Score[] }) {
-  async function handleDelete(id: string) {
-    const confirmed = window.confirm(
-      "Delete this score?"
-    );
+  const [isPending, startTransition] = useTransition();
 
-    if (!confirmed) return;
+  function handleDelete(id: string) {
+    if (!window.confirm("Delete this score?")) return;
 
-    await deleteScore(id);
+    startTransition(async () => {
+      try {
+        await deleteScore(id);
+
+        toast.success("Score deleted");
+      } catch (error) {
+        toast.error("Couldn't delete score", {
+          description:
+            error instanceof Error
+              ? error.message
+              : "Something went wrong.",
+        });
+      }
+    });
   }
 
   return (
@@ -39,9 +52,7 @@ export function ScoreList({ scores }: { scores: Score[] }) {
 
       {scores.length === 0 ? (
         <div className="rounded-xl border border-dashed p-8 text-center">
-          <p className="font-medium">
-            No scores yet
-          </p>
+          <p className="font-medium">No scores yet</p>
 
           <p className="mt-1 text-sm text-muted-foreground">
             Add your first round above.
@@ -85,9 +96,10 @@ export function ScoreList({ scores }: { scores: Score[] }) {
 
                 <button
                   onClick={() => handleDelete(score.id)}
-                  className="text-sm text-muted-foreground transition hover:text-red-500"
+                  disabled={isPending}
+                  className="text-sm text-muted-foreground transition hover:text-red-500 disabled:opacity-50"
                 >
-                  Delete
+                  {isPending ? "Deleting..." : "Delete"}
                 </button>
               </div>
             </div>
