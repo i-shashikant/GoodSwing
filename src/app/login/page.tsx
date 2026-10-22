@@ -1,66 +1,108 @@
 import Link from "next/link";
 import { login } from "@/app/auth/actions";
 
-export default function LoginPage() {
+type LoginPageProps = {
+  searchParams: Promise<{
+    error?: string;
+  }>;
+};
+
+export default async function LoginPage({
+  searchParams,
+}: LoginPageProps) {
+  const params = await searchParams;
+  const error = params.error;
+
   return (
-    <main className="flex min-h-screen items-center justify-center px-6">
-      <div className="w-full max-w-md">
-        <div className="mb-8">
-          <Link href="/" className="text-2xl font-bold">
+    <>
+      <nav className="site-nav">
+        <div
+          className="container"
+          style={{
+            display: "flex",
+            width: "100%",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <Link href="/" className="logo">
+            <span className="logo-mark">G</span>
             GoodSwing
           </Link>
 
-          <h1 className="mt-8 text-3xl font-semibold">
-            Welcome back
-          </h1>
+          <div className="nav-actions">
+            <span style={{ fontSize: "13px", color: "#686868" }}>
+              New to GoodSwing?
+            </span>
 
-          <p className="mt-2 text-muted-foreground">
-            Log in to your GoodSwing account.
-          </p>
+            <Link href="/signup" className="btn btn-primary">
+              Create account
+            </Link>
+          </div>
         </div>
+      </nav>
 
-        <form action={login} className="space-y-4">
-          <div>
-            <label className="mb-2 block text-sm font-medium">
-              Email
-            </label>
-            <input
-              name="email"
-              type="email"
-              required
-              className="w-full rounded-lg border px-4 py-3"
-              placeholder="you@example.com"
-            />
+      <main className="auth-page">
+        <div className="auth-card">
+          <h1>Welcome back.</h1>
+
+          <p>
+            Log in to access your GoodSwing dashboard.
+          </p>
+
+          {error && (
+            <div className="auth-error">
+              {error}
+            </div>
+          )}
+
+          <form action={login}>
+            <div className="form-group">
+              <label htmlFor="email">
+                Email address
+              </label>
+
+              <input
+                id="email"
+                name="email"
+                type="email"
+                placeholder="you@example.com"
+                required
+                autoComplete="email"
+              />
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="password">
+                Password
+              </label>
+
+              <input
+                id="password"
+                name="password"
+                type="password"
+                placeholder="Your password"
+                required
+                autoComplete="current-password"
+              />
+            </div>
+
+            <button
+              type="submit"
+              className="btn btn-primary auth-submit"
+            >
+              Log in
+            </button>
+          </form>
+
+          <div className="auth-footer">
+            Don't have an account?{" "}
+            <Link href="/signup">
+              Create one
+            </Link>
           </div>
-
-          <div>
-            <label className="mb-2 block text-sm font-medium">
-              Password
-            </label>
-            <input
-              name="password"
-              type="password"
-              required
-              className="w-full rounded-lg border px-4 py-3"
-              placeholder="Your password"
-            />
-          </div>
-
-          <button
-            type="submit"
-            className="w-full rounded-lg bg-black px-4 py-3 font-medium text-white"
-          >
-            Log in
-          </button>
-        </form>
-
-        <p className="mt-6 text-center text-sm text-muted-foreground">
-          Don&apos;t have an account?{" "}
-          <Link href="/signup" className="font-medium text-foreground">
-            Create one
-          </Link>
-        </p>
-      </div>
-    </main>
+        </div>
+      </main>
+    </>
   );
 }

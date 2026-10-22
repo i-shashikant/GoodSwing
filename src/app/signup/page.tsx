@@ -1,79 +1,122 @@
 import Link from "next/link";
 import { signup } from "@/app/auth/actions";
 
-export default function SignupPage() {
+type SignupPageProps = {
+  searchParams: Promise<{
+    error?: string;
+  }>;
+};
+
+export default async function SignupPage({
+  searchParams,
+}: SignupPageProps) {
+  const params = await searchParams;
+  const error = params.error;
+
   return (
-    <main className="flex min-h-screen items-center justify-center px-6">
-      <div className="w-full max-w-md">
-        <div className="mb-8">
-          <Link href="/" className="text-2xl font-bold">
+    <>
+      <nav className="site-nav">
+        <div
+          className="container"
+          style={{
+            display: "flex",
+            width: "100%",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <Link href="/" className="logo">
+            <span className="logo-mark">G</span>
             GoodSwing
           </Link>
 
-          <h1 className="mt-8 text-3xl font-semibold">
-            Create your account
-          </h1>
+          <div className="nav-actions">
+            <span style={{ fontSize: "13px", color: "#686868" }}>
+              Already a member?
+            </span>
 
-          <p className="mt-2 text-muted-foreground">
-            Play your game. Make an impact.
-          </p>
+            <Link href="/login" className="btn btn-secondary">
+              Log in
+            </Link>
+          </div>
         </div>
+      </nav>
 
-        <form action={signup} className="space-y-4">
-          <div>
-            <label className="mb-2 block text-sm font-medium">
-              Full name
-            </label>
-            <input
-              name="fullName"
-              required
-              className="w-full rounded-lg border px-4 py-3"
-              placeholder="Your name"
-            />
+      <main className="auth-page">
+        <div className="auth-card">
+          <h1>Join GoodSwing.</h1>
+
+          <p>
+            Create your account and start playing with purpose.
+          </p>
+
+          {error && (
+            <div className="auth-error">
+              {error}
+            </div>
+          )}
+
+          <form action={signup}>
+            <div className="form-group">
+              <label htmlFor="fullName">
+                Full name
+              </label>
+
+              <input
+                id="fullName"
+                name="fullName"
+                type="text"
+                placeholder="Your full name"
+                required
+                autoComplete="name"
+              />
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="email">
+                Email address
+              </label>
+
+              <input
+                id="email"
+                name="email"
+                type="email"
+                placeholder="you@example.com"
+                required
+                autoComplete="email"
+              />
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="password">
+                Password
+              </label>
+
+              <input
+                id="password"
+                name="password"
+                type="password"
+                placeholder="At least 6 characters"
+                minLength={6}
+                required
+                autoComplete="new-password"
+              />
+            </div>
+
+            <button
+              type="submit"
+              className="btn btn-primary auth-submit"
+            >
+              Create account
+            </button>
+          </form>
+
+          <div className="auth-footer">
+            By creating an account, you agree to use GoodSwing
+            responsibly.
           </div>
-
-          <div>
-            <label className="mb-2 block text-sm font-medium">
-              Email
-            </label>
-            <input
-              name="email"
-              type="email"
-              required
-              className="w-full rounded-lg border px-4 py-3"
-              placeholder="you@example.com"
-            />
-          </div>
-
-          <div>
-            <label className="mb-2 block text-sm font-medium">
-              Password
-            </label>
-            <input
-              name="password"
-              type="password"
-              minLength={6}
-              required
-              className="w-full rounded-lg border px-4 py-3"
-              placeholder="At least 6 characters"
-            />
-          </div>
-
-          <button
-            type="submit"
-            className="w-full rounded-lg bg-black px-4 py-3 font-medium text-white"
-          >
-            Create account
-          </button>
-        </form>
-
-        <p className="mt-6 text-center text-sm text-muted-foreground">
-          Already have an account?{" "}
-          <Link href="/login" className="font-medium text-foreground">
-            Log in
-          </Link>
-        </p>
-      </div>
-    </main>
+        </div>
+      </main>
+    </>
   );
 }
