@@ -34,20 +34,24 @@ export async function createCharity(formData: FormData) {
   const description = String(formData.get("description") ?? "").trim();
   const category = String(formData.get("category") ?? "").trim();
   const websiteUrl = String(formData.get("website_url") ?? "").trim();
+  const imageUrl = String(formData.get("image_url") ?? "").trim();
   const featured = formData.get("featured") === "on";
 
   if (!name || !description) {
     throw new Error("Name and description are required.");
   }
 
-  const { error } = await supabase.from("charities").insert({
-    name,
-    description,
-    category: category || null,
-    website_url: websiteUrl || null,
-    featured,
-    active: true,
-  });
+  const { error } = await supabase
+    .from("charities")
+    .insert({
+      name,
+      description,
+      category: category || null,
+      website_url: websiteUrl || null,
+      image_url: imageUrl || null,
+      featured,
+      active: true,
+    });
 
   if (error) {
     throw new Error(error.message);

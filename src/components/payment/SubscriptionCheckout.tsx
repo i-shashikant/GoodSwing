@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 type Plan = {
   id: "monthly" | "yearly";
@@ -42,7 +43,11 @@ type RazorpayOptions = {
 
 declare global {
   interface Window {
-    Razorpay: new (options: RazorpayOptions) => { open: () => void };
+    Razorpay: new (
+      options: RazorpayOptions
+    ) => {
+      open: () => void;
+    };
   }
 }
 
@@ -50,53 +55,69 @@ export default function SubscriptionCheckout({
   plans,
   charities,
 }: Props) {
+  const router = useRouter();
+
   const [plan, setPlan] =
     useState<"monthly" | "yearly">("monthly");
 
-  const [charityId, setCharityId] = useState("");
+  const [charityId, setCharityId] =
+    useState("");
 
   const [charityPercentage, setCharityPercentage] =
     useState(10);
 
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] =
+    useState(false);
 
-  const [error, setError] = useState("");
+  const [error, setError] =
+    useState("");
 
   const selectedPlan =
-    plans.find((item) => item.id === plan) ?? plans[0];
+    plans.find(
+      (item) => item.id === plan
+    ) ?? plans[0];
 
   async function handlePayment() {
     setError("");
 
     if (!charityId) {
-      setError("Please select a charity.");
+      setError(
+        "Please select a charity."
+      );
       return;
     }
 
     if (!selectedPlan) {
-      setError("Please select a membership plan.");
+      setError(
+        "Please select a membership plan."
+      );
       return;
     }
 
     setLoading(true);
 
     try {
-      const response = await fetch(
-        "/api/razorpay/order",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            plan,
-            charityId,
-            charityPercentage,
-          }),
-        }
-      );
+      const response =
+        await fetch(
+          "/api/razorpay/order",
+          {
+            method: "POST",
 
-      const data = await response.json();
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+
+            body: JSON.stringify({
+              plan,
+              charityId,
+              charityPercentage,
+            }),
+          }
+        );
+
+      const data =
+        await response.json();
 
       if (!response.ok) {
         throw new Error(
@@ -109,12 +130,15 @@ export default function SubscriptionCheckout({
         await new Promise<void>(
           (resolve, reject) => {
             const script =
-              document.createElement("script");
+              document.createElement(
+                "script"
+              );
 
             script.src =
               "https://checkout.razorpay.com/v1/checkout.js";
 
-            script.onload = () => resolve();
+            script.onload = () =>
+              resolve();
 
             script.onerror = () =>
               reject(
@@ -123,83 +147,119 @@ export default function SubscriptionCheckout({
                 )
               );
 
-            document.body.appendChild(script);
+            document.body.appendChild(
+              script
+            );
           }
         );
       }
 
-      const razorpay = new window.Razorpay({
-        key: data.keyId,
+      const razorpay =
+        new window.Razorpay({
+          key: data.keyId,
 
-        amount: data.amount,
+          amount:
+            data.amount,
 
-        currency: data.currency,
+          currency:
+            data.currency,
 
-        name: "GoodSwing",
+          name:
+            "GoodSwing",
 
-        description:
-          plan === "monthly"
-            ? "GoodSwing Monthly Membership"
-            : "GoodSwing Yearly Membership",
+          description:
+            plan === "monthly"
+              ? "GoodSwing Monthly Membership"
+              : "GoodSwing Yearly Membership",
 
-        order_id: data.orderId,
+          order_id:
+            data.orderId,
 
-        handler: async function (
-          paymentResponse: RazorpayResponse
-        ) {
-          try {
-            const verifyResponse =
-              await fetch(
-                "/api/razorpay/verify",
-                {
-                  method: "POST",
+          handler:
+            async function (
+              paymentResponse
+            ) {
+              try {
+                setError("");
 
-                  headers: {
-                    "Content-Type":
-                      "application/json",
-                  },
+                const verifyResponse =
+                  await fetch(
+                    "/api/razorpay/verify",
+                    {
+                      method: "POST",
 
-                  body: JSON.stringify({
-                    ...paymentResponse,
+                      headers: {
+                        "Content-Type":
+                          "application/json",
+                      },
 
-                    plan,
+                      body:
+                        JSON.stringify({
+                          ...paymentResponse,
 
-                    charityId,
+                          plan,
 
-                    charityPercentage,
-                  }),
+                          charityId,
+
+                          charityPercentage,
+                        }),
+                    }
+                  );
+
+                const verifyData =
+                  await verifyResponse.json();
+
+                if (
+                  !verifyResponse.ok
+                ) {
+                  throw new Error(
+                    verifyData.error ||
+                      "Payment verification failed."
+                  );
                 }
-              );
 
-            const verifyData =
-              await verifyResponse.json();
+                /*
+                 * Payment has now been verified
+                 * and the subscription has been
+                 * created/updated on the server.
+                 *
+                 * Stop the loading state before
+                 * navigating away.
+                 */
+                setLoading(false);
 
-            if (!verifyResponse.ok) {
-              throw new Error(
-                verifyData.error ||
-                  "Payment verification failed."
-              );
-            }
+                /*
+                 * Use Next.js navigation instead
+                 * of window.location.href.
+                 */
+                router.push(
+                  "/dashboard"
+                );
 
-            window.location.href =
-              "/dashboard";
-          } catch (err) {
-            setError(
-              err instanceof Error
-                ? err.message
-                : "Payment verification failed."
-            );
+                /*
+                 * Refresh the server-rendered
+                 * dashboard so the new subscription
+                 * status is immediately visible.
+                 */
+                router.refresh();
+              } catch (err) {
+                setError(
+                  err instanceof Error
+                    ? err.message
+                    : "Payment verification failed."
+                );
 
-            setLoading(false);
-          }
-        },
+                setLoading(false);
+              }
+            },
 
-        modal: {
-          ondismiss: function () {
-            setLoading(false);
+          modal: {
+            ondismiss:
+              function () {
+                setLoading(false);
+              },
           },
-        },
-      });
+        });
 
       razorpay.open();
     } catch (err) {
@@ -223,36 +283,45 @@ export default function SubscriptionCheckout({
         </h2>
 
         <div className="mt-5 grid gap-5 md:grid-cols-2">
-          {plans.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              disabled={loading}
-              onClick={() =>
-                setPlan(item.id)
-              }
-              className={`rounded-2xl border p-6 text-left transition ${
-                plan === item.id
-                  ? "border-foreground"
-                  : "hover:border-foreground/40"
-              }`}
-            >
-              <h3 className="text-xl font-semibold">
-                {item.name}
-              </h3>
+          {plans.map(
+            (item) => (
+              <button
+                key={item.id}
+                type="button"
+                disabled={
+                  loading
+                }
+                onClick={() =>
+                  setPlan(
+                    item.id
+                  )
+                }
+                className={`rounded-2xl border p-6 text-left transition ${
+                  plan ===
+                  item.id
+                    ? "border-foreground"
+                    : "hover:border-foreground/40"
+                }`}
+              >
+                <h3 className="text-xl font-semibold">
+                  {item.name}
+                </h3>
 
-              <p className="mt-2 text-2xl font-semibold">
-                ₹
-                {item.price.toLocaleString(
-                  "en-IN"
-                )}
-              </p>
+                <p className="mt-2 text-2xl font-semibold">
+                  ₹
+                  {item.price.toLocaleString(
+                    "en-IN"
+                  )}
+                </p>
 
-              <p className="mt-2 text-sm text-muted-foreground">
-                {item.description}
-              </p>
-            </button>
-          ))}
+                <p className="mt-2 text-sm text-muted-foreground">
+                  {
+                    item.description
+                  }
+                </p>
+              </button>
+            )
+          )}
         </div>
       </section>
 
@@ -264,124 +333,145 @@ export default function SubscriptionCheckout({
         </h2>
 
         <p className="mt-2 text-sm text-muted-foreground">
-          Select the cause your contribution
+          Select the cause
+          your contribution
           will support.
         </p>
 
         <div className="mt-5 grid gap-4 md:grid-cols-2">
-          {charities.map((charity) => (
-            <button
-              key={charity.id}
-              type="button"
-              disabled={loading}
-              onClick={() =>
-                setCharityId(charity.id)
-              }
-              className={`rounded-xl border p-5 text-left transition ${
-                charityId === charity.id
-                  ? "border-foreground"
-                  : "hover:border-foreground/40"
-              }`}
-            >
-              <p className="font-semibold">
-                {charity.name}
-              </p>
+          {charities.map(
+            (charity) => (
+              <button
+                key={
+                  charity.id
+                }
+                type="button"
+                disabled={
+                  loading
+                }
+                onClick={() =>
+                  setCharityId(
+                    charity.id
+                  )
+                }
+                className={`rounded-xl border p-5 text-left transition ${
+                  charityId ===
+                  charity.id
+                    ? "border-foreground"
+                    : "hover:border-foreground/40"
+                }`}
+              >
+                <h3 className="font-semibold">
+                  {
+                    charity.name
+                  }
+                </h3>
 
-              {charity.category && (
-                <p className="mt-1 text-xs uppercase tracking-wide text-muted-foreground">
-                  {charity.category}
-                </p>
-              )}
+                {charity.category && (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {
+                      charity.category
+                    }
+                  </p>
+                )}
 
-              {charity.description && (
-                <p className="mt-2 text-sm text-muted-foreground">
-                  {charity.description}
-                </p>
-              )}
-            </button>
-          ))}
-        </div>
-
-        {charities.length === 0 && (
-          <div className="mt-5 rounded-xl border border-dashed p-6 text-sm text-muted-foreground">
-            No active charities are available
-            right now.
-          </div>
-        )}
-      </section>
-
-      {/* Contribution */}
-
-      <section className="rounded-2xl border p-6">
-        <div className="flex justify-between text-sm font-medium">
-          <span>
-            Charity contribution
-          </span>
-
-          <span>
-            {charityPercentage}%
-          </span>
-        </div>
-
-        <input
-          type="range"
-          min="10"
-          max="100"
-          step="1"
-          value={charityPercentage}
-          disabled={loading}
-          onChange={(event) =>
-            setCharityPercentage(
-              Number(event.target.value)
+                {charity.description && (
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    {
+                      charity.description
+                    }
+                  </p>
+                )}
+              </button>
             )
-          }
-          className="mt-4 w-full"
-        />
-
-        <div className="mt-2 flex justify-between text-xs text-muted-foreground">
-          <span>10%</span>
-          <span>100%</span>
+          )}
         </div>
       </section>
 
-      {/* Error */}
+      {/* Charity percentage */}
 
-      {error && (
-        <div
-          role="alert"
-          className="rounded-xl border border-red-300 p-4 text-sm"
-        >
-          {error}
+      <section>
+        <h2 className="text-2xl font-semibold">
+          Charity contribution
+        </h2>
+
+        <p className="mt-2 text-sm text-muted-foreground">
+          Choose how much
+          of your membership
+          should support your
+          selected charity.
+        </p>
+
+        <div className="mt-5 flex flex-wrap gap-3">
+          {[10, 25, 50, 75, 100].map(
+            (percentage) => (
+              <button
+                key={
+                  percentage
+                }
+                type="button"
+                disabled={
+                  loading
+                }
+                onClick={() =>
+                  setCharityPercentage(
+                    percentage
+                  )
+                }
+                className={`rounded-full border px-5 py-2 text-sm transition ${
+                  charityPercentage ===
+                  percentage
+                    ? "border-foreground bg-foreground text-background"
+                    : "hover:border-foreground/40"
+                }`}
+              >
+                {
+                  percentage
+                }
+                %
+              </button>
+            )
+          )}
         </div>
-      )}
+      </section>
 
       {/* Payment */}
 
-      <section className="rounded-2xl border p-6">
-        <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h2 className="text-xl font-semibold">
-              Ready to join GoodSwing?
-            </h2>
+      <section className="border-t pt-8">
+        {error && (
+          <div className="mb-5 rounded-xl border border-red-500/30 bg-red-500/5 p-4 text-sm text-red-600">
+            {error}
+          </div>
+        )}
 
-            <p className="mt-1 text-sm text-muted-foreground">
-              You will pay ₹
-              {selectedPlan?.price.toLocaleString(
-                "en-IN"
-              )}{" "}
-              and allocate{" "}
-              {charityPercentage}% of your
-              membership amount to your selected
-              charity.
+        <div className="flex flex-col gap-4 rounded-2xl border p-6 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-sm text-muted-foreground">
+              Selected membership
             </p>
+
+            <p className="mt-1 text-xl font-semibold">
+              {selectedPlan?.name}
+            </p>
+
+            {selectedPlan && (
+              <p className="mt-1 text-sm text-muted-foreground">
+                ₹
+                {selectedPlan.price.toLocaleString(
+                  "en-IN"
+                )}
+              </p>
+            )}
           </div>
 
           <button
             type="button"
-            onClick={handlePayment}
             disabled={
               loading ||
-              charities.length === 0
+              !selectedPlan
+            }
+            onClick={
+              handlePayment
             }
             className="rounded-xl bg-foreground px-6 py-3 font-medium text-background transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
           >

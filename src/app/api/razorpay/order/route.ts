@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { razorpay } from "@/lib/razorpay";
 
 const PLANS = {
@@ -19,12 +20,17 @@ export async function POST(
   request: Request
 ) {
   try {
+    // -----------------------------------------
+    // 1. Authenticate user
+    // -----------------------------------------
+
     const supabase =
       await createClient();
 
     const {
       data: { user },
-    } = await supabase.auth.getUser();
+    } =
+      await supabase.auth.getUser();
 
     if (!user) {
       return NextResponse.json(
@@ -32,9 +38,58 @@ export async function POST(
           error:
             "You must be logged in.",
         },
-        { status: 401 }
+        {
+          status: 401,
+        }
       );
     }
+
+    // -----------------------------------------
+    // 2. Prevent duplicate active membership
+    // -----------------------------------------
+
+    const admin =
+      createAdminClient();
+
+    const {
+      data: currentSubscription,
+    } = await admin
+      .from("subscriptions")
+      .select(
+        "id, status, current_period_end"
+      )
+      .eq(
+        "user_id",
+        user.id
+      )
+      .maybeSingle();
+
+    if (
+      currentSubscription?.status ===
+      "active"
+    ) {
+      const hasNotExpired =
+        !currentSubscription.current_period_end ||
+        new Date(
+          currentSubscription.current_period_end
+        ) > new Date();
+
+      if (hasNotExpired) {
+        return NextResponse.json(
+          {
+            error:
+              "You already have an active GoodSwing membership.",
+          },
+          {
+            status: 409,
+          }
+        );
+      }
+    }
+
+    // -----------------------------------------
+    // 3. Read request
+    // -----------------------------------------
 
     const body =
       await request.json();
@@ -43,12 +98,18 @@ export async function POST(
       body.plan as keyof typeof PLANS;
 
     const charityId =
-      String(body.charityId || "");
+      String(
+        body.charityId || ""
+      );
 
     const charityPercentage =
       Number(
         body.charityPercentage
       );
+
+    // -----------------------------------------
+    // 4. Validate plan
+    // -----------------------------------------
 
     if (!PLANS[plan]) {
       return NextResponse.json(
@@ -56,9 +117,15 @@ export async function POST(
           error:
             "Invalid subscription plan.",
         },
-        { status: 400 }
+        {
+          status: 400,
+        }
       );
     }
+
+    // -----------------------------------------
+    // 5. Validate charity
+    // -----------------------------------------
 
     if (!charityId) {
       return NextResponse.json(
@@ -66,9 +133,15 @@ export async function POST(
           error:
             "Please select a charity.",
         },
-        { status: 400 }
+        {
+          status: 400,
+        }
       );
     }
+
+    // -----------------------------------------
+    // 6. Validate charity percentage
+    // -----------------------------------------
 
     if (
       !Number.isInteger(
@@ -82,19 +155,34 @@ export async function POST(
           error:
             "Charity percentage must be between 10% and 100%.",
         },
-        { status: 400 }
+        {
+          status: 400,
+        }
       );
     }
+
+    // -----------------------------------------
+    // 7. Validate charity exists
+    // -----------------------------------------
 
     const {
       data: charity,
       error: charityError,
-    } = await supabase
-      .from("charities")
-      .select("id, name")
-      .eq("id", charityId)
-      .eq("active", true)
-      .single();
+    } =
+      await supabase
+        .from("charities")
+        .select(
+          "id, name"
+        )
+        .eq(
+          "id",
+          charityId
+        )
+        .eq(
+          "active",
+          true
+        )
+        .single();
 
     if (
       charityError ||
@@ -105,9 +193,15 @@ export async function POST(
           error:
             "Selected charity is not available.",
         },
-        { status: 400 }
+        {
+          status: 400,
+        }
       );
     }
+
+    // -----------------------------------------
+    // 8. Create Razorpay order
+    // -----------------------------------------
 
     const selectedPlan =
       PLANS[plan];
@@ -117,7 +211,8 @@ export async function POST(
         amount:
           selectedPlan.amount,
 
-        currency: "INR",
+        currency:
+          "INR",
 
         receipt:
           `gs_${user.id.slice(
@@ -126,7 +221,8 @@ export async function POST(
           )}_${Date.now()}`,
 
         notes: {
-          user_id: user.id,
+          user_id:
+            user.id,
 
           plan,
 
@@ -140,13 +236,19 @@ export async function POST(
         },
       });
 
+    // -----------------------------------------
+    // 9. Return checkout data
+    // -----------------------------------------
+
     return NextResponse.json({
-      orderId: order.id,
+      orderId:
+        order.id,
 
       amount:
         selectedPlan.amount,
 
-      currency: "INR",
+      currency:
+        "INR",
 
       keyId:
         process.env
@@ -170,7 +272,9 @@ export async function POST(
         error:
           "Unable to create payment order.",
       },
-      { status: 500 }
+      {
+        status: 500,
+      }
     );
   }
 }

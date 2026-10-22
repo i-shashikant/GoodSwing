@@ -2,15 +2,25 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 export type DrawMethod = "random" | "weighted";
 
+type Participant = {
+  userId: string;
+  fullName: string;
+  email: string;
+  scores: [number, number, number, number, number];
+};
+
 export type DrawSimulationResult = {
   drawId: string;
   drawMonth: string;
   drawMethod: DrawMethod;
   drawnNumbers: [number, number, number, number, number];
+
   totalSubscribers: number;
   eligibleSubscribers: number;
+
   totalPrizePool: number;
   incomingRollover: number;
+
   tier1: {
     poolSharePct: 40;
     allocatedAmount: number;
@@ -18,316 +28,747 @@ export type DrawSimulationResult = {
     prizePerWinner: number;
     rolledOver: boolean;
     rolloverAmount: number;
-    winners: { userId: string; fullName: string; email: string; scores: number[] }[];
+    winners: Participant[];
   };
+
   tier2: {
     poolSharePct: 35;
     allocatedAmount: number;
     winnerCount: number;
     prizePerWinner: number;
-    winners: { userId: string; fullName: string; email: string; scores: number[] }[];
+    winners: Participant[];
   };
+
   tier3: {
     poolSharePct: 25;
     allocatedAmount: number;
     winnerCount: number;
     prizePerWinner: number;
-    winners: { userId: string; fullName: string; email: string; scores: number[] }[];
+    winners: Participant[];
   };
+
   frequencyTable: Record<number, number>;
 };
 
 /**
  * Generates 5 unique numbers between 1 and 45.
- * Method 'random': Uniform lottery-style.
- * Method 'weighted': Probability proportional to player Stableford score frequency.
+ *
+ * random:
+ *   Uniform lottery-style selection.
+ *
+ * weighted:
+ *   Probability is proportional to the frequency of each
+ *   Stableford score among eligible participants.
  */
 export function generateDrawNumbers(
   method: DrawMethod,
   playerScores: number[][]
 ): [number, number, number, number, number] {
   if (method === "random") {
-    const pool = Array.from({ length: 45 }, (_, i) => i + 1);
+    const pool = Array.from(
+      { length: 45 },
+      (_, index) => index + 1
+    );
+
     const selected: number[] = [];
+
     while (selected.length < 5) {
-      const idx = Math.floor(Math.random() * pool.length);
-      selected.push(pool.splice(idx, 1)[0]);
+      const index = Math.floor(
+        Math.random() * pool.length
+      );
+
+      selected.push(
+        pool.splice(index, 1)[0]
+      );
     }
+
     selected.sort((a, b) => a - b);
-    return selected as [number, number, number, number, number];
+
+    return selected as [
+      number,
+      number,
+      number,
+      number,
+      number
+    ];
   }
 
-  // Algorithmic: weighted by score frequency
-  // Count frequency of each score 1..45 among active players
+  // ----------------------------------------------------------
+  // Weighted / algorithmic draw
+  // ----------------------------------------------------------
+
   const frequencies: Record<number, number> = {};
-  for (let i = 1; i <= 45; i++) {
-    frequencies[i] = 1; // Laplace smoothing so every number 1-45 has non-zero chance
+
+  // Laplace smoothing:
+  // every number from 1-45 starts with weight 1.
+  for (let number = 1; number <= 45; number++) {
+    frequencies[number] = 1;
   }
 
   for (const round of playerScores) {
     for (const score of round) {
       if (score >= 1 && score <= 45) {
-        frequencies[score] = (frequencies[score] || 1) + 1;
+        frequencies[score] += 1;
       }
     }
   }
 
-  const pool = Array.from({ length: 45 }, (_, i) => i + 1);
+  const pool = Array.from(
+    { length: 45 },
+    (_, index) => index + 1
+  );
+
   const selected: number[] = [];
 
   while (selected.length < 5) {
-    const totalWeight = pool.reduce((sum, num) => sum + frequencies[num], 0);
-    let randomWeight = Math.random() * totalWeight;
+    const totalWeight = pool.reduce(
+      (sum, number) =>
+        sum + frequencies[number],
+      0
+    );
 
-    for (let i = 0; i < pool.length; i++) {
-      const num = pool[i];
-      randomWeight -= frequencies[num];
+    let randomWeight =
+      Math.random() * totalWeight;
+
+    for (let index = 0; index < pool.length; index++) {
+      const number = pool[index];
+
+      randomWeight -=
+        frequencies[number];
+
       if (randomWeight <= 0) {
-        selected.push(pool.splice(i, 1)[0]);
+        selected.push(
+          pool.splice(index, 1)[0]
+        );
+
         break;
       }
     }
   }
 
   selected.sort((a, b) => a - b);
-  return selected as [number, number, number, number, number];
+
+  return selected as [
+    number,
+    number,
+    number,
+    number,
+    number
+  ];
 }
 
 /**
- * Fetch all eligible subscribers with their current 5 Stableford scores.
+ * Fetch all participants eligible for a particular draw.
+ *
+ * A participant must:
+ *
+ * 1. Have an active subscription on the draw date.
+ * 2. Have exactly/latest 5 recorded Stableford scores.
  */
-export async function getEligibleParticipants() {
+export async function getEligibleParticipants(
+  drawDate?: string
+) {
   const admin = createAdminClient();
 
+  const eligibilityDate = drawDate
+    ? new Date(drawDate)
+    : new Date();
+
+  if (Number.isNaN(eligibilityDate.getTime())) {
+    throw new Error(
+      "Invalid draw eligibility date."
+    );
+  }
+
+  // ----------------------------------------------------------
   // 1. Get active subscriptions
-  const { data: subs, error: subError } = await admin
+  // ----------------------------------------------------------
+
+  const {
+    data: subscriptions,
+    error: subscriptionError,
+  } = await admin
     .from("subscriptions")
-    .select("user_id, plan, amount, status, current_period_end")
+    .select(
+      [
+        "user_id",
+        "plan",
+        "amount",
+        "status",
+        "current_period_start",
+        "current_period_end",
+      ].join(", ")
+    )
     .eq("status", "active");
 
-  if (subError) throw new Error(subError.message);
-
-  const activeUserIds = (subs ?? [])
-    .filter((s) => !s.current_period_end || new Date(s.current_period_end) > new Date())
-    .map((s) => s.user_id);
-
-  if (activeUserIds.length === 0) {
-    return {
-      participants: [],
-      totalSubscribers: 0,
-      activeSubscriptions: subs ?? [],
-    };
+  if (subscriptionError) {
+    throw new Error(
+      subscriptionError.message
+    );
   }
 
+  type SubscriptionRow = {
+  user_id: string;
+  current_period_start: string | null;
+  current_period_end: string | null;
+};
+
+  const activeSubscriptions: SubscriptionRow[] = [];
+
+  for (const row of subscriptions ?? []) {
+    const subscription = row as unknown as SubscriptionRow;
+
+    const startsBeforeDraw =
+      !subscription.current_period_start ||
+      new Date(subscription.current_period_start) <= eligibilityDate;
+
+    const endsAfterDraw =
+      !subscription.current_period_end ||
+      new Date(subscription.current_period_end) >= eligibilityDate;
+
+    if (startsBeforeDraw && endsAfterDraw) {
+      activeSubscriptions.push(subscription);
+    }
+  }
+
+  const activeUserIds = activeSubscriptions.map(
+    (subscription) => subscription.user_id
+  );
+
+    if (activeUserIds.length === 0) {
+      return {
+        participants: [] as Participant[],
+        totalSubscribers: 0,
+        activeSubscriptions,
+      };
+    }
+
+  // ----------------------------------------------------------
   // 2. Fetch profiles
-  const { data: profiles } = await admin
+  // ----------------------------------------------------------
+
+  const {
+    data: profiles,
+    error: profileError,
+  } = await admin
     .from("profiles")
-    .select("id, full_name, role")
+    .select(
+      "id, full_name, email, role"
+    )
     .in("id", activeUserIds);
 
-  const profileMap = new Map((profiles ?? []).map((p) => [p.id, p]));
+  if (profileError) {
+    throw new Error(
+      profileError.message
+    );
+  }
 
-  // 3. Fetch latest 5 scores per user
-  const { data: scores, error: scoresError } = await admin
+  const profileMap = new Map(
+    (profiles ?? []).map(
+      (profile) => [
+        profile.id,
+        profile,
+      ]
+    )
+  );
+
+  // ----------------------------------------------------------
+  // 3. Fetch scores
+  // ----------------------------------------------------------
+
+  const {
+    data: scores,
+    error: scoresError,
+  } = await admin
     .from("scores")
-    .select("id, user_id, score, played_at")
+    .select(
+      "id, user_id, score, played_at"
+    )
     .in("user_id", activeUserIds)
-    .order("played_at", { ascending: false });
+    .order("played_at", {
+      ascending: false,
+    });
 
-  if (scoresError) throw new Error(scoresError.message);
+  if (scoresError) {
+    throw new Error(
+      scoresError.message
+    );
+  }
 
-  const userScoresMap = new Map<string, number[]>();
-  for (const s of scores ?? []) {
-    const list = userScoresMap.get(s.user_id) ?? [];
-    if (list.length < 5) {
-      list.push(s.score);
-      userScoresMap.set(s.user_id, list);
+  // Keep only the latest 5 scores per user.
+  const userScoresMap =
+    new Map<string, number[]>();
+
+  for (const score of scores ?? []) {
+    const existing =
+      userScoresMap.get(
+        score.user_id
+      ) ?? [];
+
+    if (existing.length < 5) {
+      existing.push(score.score);
+
+      userScoresMap.set(
+        score.user_id,
+        existing
+      );
     }
   }
 
-  // Filter participants who have logged 5 rounds
-  const participants: {
-    userId: string;
-    fullName: string;
-    email: string;
-    scores: [number, number, number, number, number];
-  }[] = [];
+  // ----------------------------------------------------------
+  // 4. Build eligible participants
+  // ----------------------------------------------------------
+
+  const participants: Participant[] =
+    [];
 
   for (const userId of activeUserIds) {
-    const userScores = userScoresMap.get(userId) ?? [];
-    if (userScores.length === 5) {
-      const profile = profileMap.get(userId);
-      participants.push({
-        userId,
-        fullName: profile?.full_name || "Golfer",
-        email: "",
-        scores: userScores as [number, number, number, number, number],
-      });
+    const userScores =
+      userScoresMap.get(userId) ?? [];
+
+    // A user needs 5 scores to participate.
+    if (userScores.length !== 5) {
+      continue;
     }
+
+    const profile =
+      profileMap.get(userId);
+
+    participants.push({
+      userId,
+      fullName:
+        profile?.full_name ||
+        "Golfer",
+      email:
+        profile?.email ||
+        "",
+      scores:
+        userScores as [
+          number,
+          number,
+          number,
+          number,
+          number
+        ],
+    });
   }
 
   return {
     participants,
-    totalSubscribers: activeUserIds.length,
-    activeSubscriptions: subs ?? [],
+    totalSubscribers:
+      activeUserIds.length,
+    activeSubscriptions,
   };
 }
 
 /**
- * Simulates a draw without persisting any changes.
+ * Simulates a draw without persisting anything.
  */
 export async function simulateDraw(
   drawId: string,
   methodOverride?: DrawMethod,
-  numbersOverride?: [number, number, number, number, number]
+  numbersOverride?: [
+    number,
+    number,
+    number,
+    number,
+    number
+  ]
 ): Promise<DrawSimulationResult> {
-  const admin = createAdminClient();
+  const admin =
+    createAdminClient();
 
-  const { data: draw, error: drawError } = await admin
+  // ----------------------------------------------------------
+  // 1. Load draw
+  // ----------------------------------------------------------
+
+  const {
+    data: draw,
+    error: drawError,
+  } = await admin
     .from("draws")
     .select("*")
     .eq("id", drawId)
     .single();
 
-  if (drawError || !draw) throw new Error("Draw not found");
+  if (drawError || !draw) {
+    throw new Error(
+      "Draw not found."
+    );
+  }
 
-  const method: DrawMethod = methodOverride || (draw.draw_method as DrawMethod) || "random";
+  // Do not simulate an already completed draw.
+  if (draw.status === "completed") {
+    throw new Error(
+      "This draw has already been completed."
+    );
+  }
 
-  const { participants, totalSubscribers } = await getEligibleParticipants();
+  const method: DrawMethod =
+    methodOverride ||
+    (draw.draw_method as DrawMethod) ||
+    "random";
 
-  // Compute frequency table for diagnostic display
-  const frequencyTable: Record<number, number> = {};
-  for (let i = 1; i <= 45; i++) frequencyTable[i] = 0;
-  for (const p of participants) {
-    for (const s of p.scores) {
-      if (s >= 1 && s <= 45) {
-        frequencyTable[s] = (frequencyTable[s] || 0) + 1;
+  // ----------------------------------------------------------
+  // 2. Get eligible participants
+  // ----------------------------------------------------------
+
+  const {
+    participants,
+    totalSubscribers,
+  } =
+    await getEligibleParticipants(
+      draw.draw_date
+    );
+
+  // ----------------------------------------------------------
+  // 3. Build frequency table
+  // ----------------------------------------------------------
+
+  const frequencyTable:
+    Record<number, number> = {};
+
+  for (
+    let number = 1;
+    number <= 45;
+    number++
+  ) {
+    frequencyTable[number] = 0;
+  }
+
+  for (const participant of participants) {
+    for (const score of participant.scores) {
+      if (
+        score >= 1 &&
+        score <= 45
+      ) {
+        frequencyTable[score] += 1;
       }
     }
   }
 
-  // Generate or use numbers
+  // ----------------------------------------------------------
+  // 4. Generate / use winning numbers
+  // ----------------------------------------------------------
+
   const drawnNumbers =
     numbersOverride ||
     generateDrawNumbers(
       method,
-      participants.map((p) => p.scores)
+      participants.map(
+        (participant) =>
+          participant.scores
+      )
     );
 
-  const winningSet = new Set(drawnNumbers);
+  const winningSet =
+    new Set(drawnNumbers);
 
-  // Group winners by tier
-  const tier5Winners: DrawSimulationResult["tier1"]["winners"] = [];
-  const tier4Winners: DrawSimulationResult["tier2"]["winners"] = [];
-  const tier3Winners: DrawSimulationResult["tier3"]["winners"] = [];
+  // ----------------------------------------------------------
+  // 5. Find winners
+  // ----------------------------------------------------------
 
-  for (const p of participants) {
-    const matches = p.scores.filter((score) => winningSet.has(score)).length;
+  const tier5Winners:
+    Participant[] = [];
+
+  const tier4Winners:
+    Participant[] = [];
+
+  const tier3Winners:
+    Participant[] = [];
+
+  for (const participant of participants) {
+    const matches =
+      participant.scores.filter(
+        (score) =>
+          winningSet.has(score)
+      ).length;
+
     if (matches === 5) {
-      tier5Winners.push(p);
+      tier5Winners.push(
+        participant
+      );
     } else if (matches === 4) {
-      tier4Winners.push(p);
+      tier4Winners.push(
+        participant
+      );
     } else if (matches === 3) {
-      tier3Winners.push(p);
+      tier3Winners.push(
+        participant
+      );
     }
   }
 
-  // Calculate prize pool: based on active subscriber count or draw prize_pool
-  const incomingRollover = Number(draw.jackpot_rollover) || 0;
-  let totalPrizePool = Number(draw.prize_pool) || 0;
+  // ----------------------------------------------------------
+  // 6. Prize pool
+  // ----------------------------------------------------------
 
-  // If prize_pool was 0, auto-calculate based on PRD § 07: active subscribers * base pool
-  if (totalPrizePool === 0 && totalSubscribers > 0) {
-    // 50% of ₹499 membership fee allocated to prize pool
-    totalPrizePool = totalSubscribers * 250;
+  const incomingRollover =
+    Number(
+      draw.jackpot_rollover
+    ) || 0;
+
+  let basePrizePool =
+    Number(draw.prize_pool) || 0;
+
+  // If admin entered 0, calculate automatically.
+  //
+  // ₹499 membership × 50% allocated to prize pool
+  // = approximately ₹250 per active subscriber.
+  if (
+    basePrizePool === 0 &&
+    totalSubscribers > 0
+  ) {
+    basePrizePool =
+      totalSubscribers * 250;
   }
 
-  const effectivePool = totalPrizePool + incomingRollover;
+  const effectivePool =
+    basePrizePool +
+    incomingRollover;
 
-  // PRD § 07 Distribution:
-  // 5-Number match: 40% (Rollover: Yes - jackpot)
-  // 4-Number match: 35% (Rollover: No)
-  // 3-Number match: 25% (Rollover: No)
-  const tier1Amount = Math.round(effectivePool * 0.4);
-  const tier2Amount = Math.round(effectivePool * 0.35);
-  const tier3Amount = Math.round(effectivePool * 0.25);
+  // ----------------------------------------------------------
+  // 7. Prize distribution
+  // ----------------------------------------------------------
 
-  const tier1WinnerCount = tier5Winners.length;
-  const tier2WinnerCount = tier4Winners.length;
-  const tier3WinnerCount = tier3Winners.length;
+  const tier1Amount =
+    Math.round(
+      effectivePool * 0.4
+    );
 
-  const rolloverAmount = tier1WinnerCount === 0 ? tier1Amount : 0;
+  const tier2Amount =
+    Math.round(
+      effectivePool * 0.35
+    );
+
+  const tier3Amount =
+    Math.round(
+      effectivePool * 0.25
+    );
+
+  const tier1WinnerCount =
+    tier5Winners.length;
+
+  const tier2WinnerCount =
+    tier4Winners.length;
+
+  const tier3WinnerCount =
+    tier3Winners.length;
+
+  const rolloverAmount =
+    tier1WinnerCount === 0
+      ? tier1Amount
+      : 0;
 
   return {
     drawId: draw.id,
     drawMonth: draw.draw_month,
     drawMethod: method,
     drawnNumbers,
+
     totalSubscribers,
-    eligibleSubscribers: participants.length,
-    totalPrizePool: effectivePool,
+    eligibleSubscribers:
+      participants.length,
+
+    totalPrizePool:
+      effectivePool,
+
     incomingRollover,
+
     tier1: {
       poolSharePct: 40,
-      allocatedAmount: tier1Amount,
-      winnerCount: tier1WinnerCount,
+      allocatedAmount:
+        tier1Amount,
+      winnerCount:
+        tier1WinnerCount,
       prizePerWinner:
-        tier1WinnerCount > 0 ? Math.floor(tier1Amount / tier1WinnerCount) : 0,
-      rolledOver: tier1WinnerCount === 0,
+        tier1WinnerCount > 0
+          ? Math.floor(
+              tier1Amount /
+                tier1WinnerCount
+            )
+          : 0,
+      rolledOver:
+        tier1WinnerCount === 0,
       rolloverAmount,
-      winners: tier5Winners,
+      winners:
+        tier5Winners,
     },
+
     tier2: {
       poolSharePct: 35,
-      allocatedAmount: tier2Amount,
-      winnerCount: tier2WinnerCount,
+      allocatedAmount:
+        tier2Amount,
+      winnerCount:
+        tier2WinnerCount,
       prizePerWinner:
-        tier2WinnerCount > 0 ? Math.floor(tier2Amount / tier2WinnerCount) : 0,
-      winners: tier4Winners,
+        tier2WinnerCount > 0
+          ? Math.floor(
+              tier2Amount /
+                tier2WinnerCount
+            )
+          : 0,
+      winners:
+        tier4Winners,
     },
+
     tier3: {
       poolSharePct: 25,
-      allocatedAmount: tier3Amount,
-      winnerCount: tier3WinnerCount,
+      allocatedAmount:
+        tier3Amount,
+      winnerCount:
+        tier3WinnerCount,
       prizePerWinner:
-        tier3WinnerCount > 0 ? Math.floor(tier3Amount / tier3WinnerCount) : 0,
-      winners: tier3Winners,
+        tier3WinnerCount > 0
+          ? Math.floor(
+              tier3Amount /
+                tier3WinnerCount
+            )
+          : 0,
+      winners:
+        tier3Winners,
     },
+
     frequencyTable,
   };
 }
 
 /**
- * Commits and publishes a completed draw to the database.
- * Records draw_entries, creates winners, updates rollover, and marks draw completed.
+ * Commits and publishes a completed draw.
+ *
+ * This records:
+ * - draw entries
+ * - winners
+ * - winning numbers
+ * - prize pool
+ * - jackpot rollover
+ * - completed status
  */
 export async function executeAndPublishDraw(
   drawId: string,
   method: DrawMethod,
-  drawnNumbers: [number, number, number, number, number]
+  drawnNumbers: [
+    number,
+    number,
+    number,
+    number,
+    number
+  ]
 ) {
-  const admin = createAdminClient();
+  const admin =
+    createAdminClient();
 
-  const simulation = await simulateDraw(drawId, method, drawnNumbers);
+  // ----------------------------------------------------------
+  // 1. Make sure draw exists and isn't already completed
+  // ----------------------------------------------------------
 
-  const { participants } = await getEligibleParticipants();
+  const {
+    data: currentDraw,
+    error: currentDrawError,
+  } = await admin
+    .from("draws")
+    .select(
+      "id, status, draw_date"
+    )
+    .eq("id", drawId)
+    .single();
 
-  // 1. Record draw_entries for all eligible participants
-  if (participants.length > 0) {
-    const entriesData = participants.map((p) => ({
-      draw_id: drawId,
-      user_id: p.userId,
-      score_1: p.scores[0],
-      score_2: p.scores[1],
-      score_3: p.scores[2],
-      score_4: p.scores[3],
-      score_5: p.scores[4],
-    }));
-
-    await admin.from("draw_entries").insert(entriesData);
+  if (
+    currentDrawError ||
+    !currentDraw
+  ) {
+    throw new Error(
+      "Draw not found."
+    );
   }
 
-  // 2. Record winners
+  if (
+    currentDraw.status ===
+    "completed"
+  ) {
+    throw new Error(
+      "This draw has already been completed."
+    );
+  }
+
+  // ----------------------------------------------------------
+  // 2. Simulate the exact numbers being published
+  // ----------------------------------------------------------
+
+  const simulation =
+    await simulateDraw(
+      drawId,
+      method,
+      drawnNumbers
+    );
+
+  // ----------------------------------------------------------
+  // 3. Get the exact participant snapshot
+  // ----------------------------------------------------------
+
+  const {
+    participants,
+  } =
+    await getEligibleParticipants(
+      currentDraw.draw_date
+    );
+
+  // ----------------------------------------------------------
+  // 4. Record draw entries
+  // ----------------------------------------------------------
+
+  if (participants.length > 0) {
+    const entriesData =
+      participants.map(
+        (participant) => ({
+          draw_id:
+            drawId,
+
+          user_id:
+            participant.userId,
+
+          score_1:
+            participant.scores[0],
+
+          score_2:
+            participant.scores[1],
+
+          score_3:
+            participant.scores[2],
+
+          score_4:
+            participant.scores[3],
+
+          score_5:
+            participant.scores[4],
+        })
+      );
+
+    const {
+      error: entriesError,
+    } = await admin
+      .from("draw_entries")
+      .upsert(
+        entriesData,
+        {
+          onConflict:
+            "draw_id,user_id",
+          ignoreDuplicates:
+            true,
+        }
+      );
+
+    if (entriesError) {
+      throw new Error(
+        `Unable to record draw entries: ${entriesError.message}`
+      );
+    }
+  }
+
+  // ----------------------------------------------------------
+  // 5. Prepare winners
+  // ----------------------------------------------------------
+
   const winnersToInsert: {
     user_id: string;
     draw_id: string;
@@ -337,61 +778,157 @@ export async function executeAndPublishDraw(
     payment_status: string;
   }[] = [];
 
-  for (const w of simulation.tier1.winners) {
+  for (
+    const winner of
+    simulation.tier1.winners
+  ) {
     winnersToInsert.push({
-      user_id: w.userId,
-      draw_id: drawId,
+      user_id:
+        winner.userId,
+
+      draw_id:
+        drawId,
+
       match_count: 5,
-      prize_amount: simulation.tier1.prizePerWinner,
-      verification_status: "pending",
-      payment_status: "pending",
+
+      prize_amount:
+        simulation.tier1
+          .prizePerWinner,
+
+      verification_status:
+        "pending",
+
+      payment_status:
+        "pending",
     });
   }
 
-  for (const w of simulation.tier2.winners) {
+  for (
+    const winner of
+    simulation.tier2.winners
+  ) {
     winnersToInsert.push({
-      user_id: w.userId,
-      draw_id: drawId,
+      user_id:
+        winner.userId,
+
+      draw_id:
+        drawId,
+
       match_count: 4,
-      prize_amount: simulation.tier2.prizePerWinner,
-      verification_status: "pending",
-      payment_status: "pending",
+
+      prize_amount:
+        simulation.tier2
+          .prizePerWinner,
+
+      verification_status:
+        "pending",
+
+      payment_status:
+        "pending",
     });
   }
 
-  for (const w of simulation.tier3.winners) {
+  for (
+    const winner of
+    simulation.tier3.winners
+  ) {
     winnersToInsert.push({
-      user_id: w.userId,
-      draw_id: drawId,
+      user_id:
+        winner.userId,
+
+      draw_id:
+        drawId,
+
       match_count: 3,
-      prize_amount: simulation.tier3.prizePerWinner,
-      verification_status: "pending",
-      payment_status: "pending",
+
+      prize_amount:
+        simulation.tier3
+          .prizePerWinner,
+
+      verification_status:
+        "pending",
+
+      payment_status:
+        "pending",
     });
   }
 
-  if (winnersToInsert.length > 0) {
-    const { error: winError } = await admin.from("winners").insert(winnersToInsert);
-    if (winError) throw new Error(winError.message);
+  // ----------------------------------------------------------
+  // 6. Save winners
+  // ----------------------------------------------------------
+
+  if (
+    winnersToInsert.length > 0
+  ) {
+    const {
+      error: winnersError,
+    } = await admin
+      .from("winners")
+      .upsert(
+        winnersToInsert,
+        {
+          onConflict:
+            "draw_id,user_id",
+          ignoreDuplicates:
+            true,
+        }
+      );
+
+    if (winnersError) {
+      throw new Error(
+        `Unable to record winners: ${winnersError.message}`
+      );
+    }
   }
 
-  // 3. Update the draw status to 'completed' with numbers
-  const { error: updateError } = await admin
+  // ----------------------------------------------------------
+  // 7. Complete draw
+  // ----------------------------------------------------------
+
+  const {
+    error: updateError,
+  } = await admin
     .from("draws")
     .update({
-      status: "completed",
-      draw_method: method,
-      number_1: drawnNumbers[0],
-      number_2: drawnNumbers[1],
-      number_3: drawnNumbers[2],
-      number_4: drawnNumbers[3],
-      number_5: drawnNumbers[4],
-      prize_pool: simulation.totalPrizePool,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", drawId);
+      status:
+        "completed",
 
-  if (updateError) throw new Error(updateError.message);
+      draw_method:
+        method,
+
+      number_1:
+        drawnNumbers[0],
+
+      number_2:
+        drawnNumbers[1],
+
+      number_3:
+        drawnNumbers[2],
+
+      number_4:
+        drawnNumbers[3],
+
+      number_5:
+        drawnNumbers[4],
+
+      prize_pool:
+        simulation.totalPrizePool,
+
+      jackpot_rollover_out:
+        simulation.tier1
+          .rolloverAmount,
+
+      updated_at:
+        new Date().toISOString(),
+    })
+    .eq("id", drawId)
+    .neq("status", "completed");
+
+  if (updateError) {
+    throw new Error(
+      updateError.message
+    );
+  }
 
   return simulation;
 }

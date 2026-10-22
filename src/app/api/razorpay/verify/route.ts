@@ -19,16 +19,17 @@ export async function POST(
   request: Request
 ) {
   try {
-    // -----------------------------------------
+    // ========================================================
     // 1. Authenticate
-    // -----------------------------------------
+    // ========================================================
 
     const supabase =
       await createClient();
 
     const {
       data: { user },
-    } = await supabase.auth.getUser();
+    } =
+      await supabase.auth.getUser();
 
     if (!user) {
       return NextResponse.json(
@@ -36,13 +37,15 @@ export async function POST(
           error:
             "You must be logged in.",
         },
-        { status: 401 }
+        {
+          status: 401,
+        }
       );
     }
 
-    // -----------------------------------------
-    // 2. Read payment response
-    // -----------------------------------------
+    // ========================================================
+    // 2. Read Razorpay response
+    // ========================================================
 
     const body =
       await request.json();
@@ -63,16 +66,19 @@ export async function POST(
           error:
             "Missing payment verification data.",
         },
-        { status: 400 }
+        {
+          status: 400,
+        }
       );
     }
 
-    // -----------------------------------------
+    // ========================================================
     // 3. Verify Razorpay signature
-    // -----------------------------------------
+    // ========================================================
 
     const secret =
-      process.env.RAZORPAY_KEY_SECRET;
+      process.env
+        .RAZORPAY_KEY_SECRET;
 
     if (!secret) {
       throw new Error(
@@ -114,13 +120,15 @@ export async function POST(
           error:
             "Invalid payment signature.",
         },
-        { status: 400 }
+        {
+          status: 400,
+        }
       );
     }
 
-    // -----------------------------------------
-    // 4. Fetch the order from Razorpay
-    // -----------------------------------------
+    // ========================================================
+    // 4. Fetch order from Razorpay
+    // ========================================================
 
     const order =
       await razorpay.orders.fetch(
@@ -135,10 +143,11 @@ export async function POST(
     const charityId =
       order.notes?.charity_id;
 
-    const percentage = Number(
-      order.notes
-        ?.charity_percentage
-    );
+    const percentage =
+      Number(
+        order.notes
+          ?.charity_percentage
+      );
 
     if (
       !orderPlan ||
@@ -149,13 +158,15 @@ export async function POST(
           error:
             "Invalid payment order metadata.",
         },
-        { status: 400 }
+        {
+          status: 400,
+        }
       );
     }
 
-    // -----------------------------------------
-    // 5. Validate amount/currency
-    // -----------------------------------------
+    // ========================================================
+    // 5. Validate amount and currency
+    // ========================================================
 
     const selectedPlan =
       PLANS[orderPlan];
@@ -163,20 +174,23 @@ export async function POST(
     if (
       Number(order.amount) !==
         selectedPlan.amount ||
-      order.currency !== "INR"
+      order.currency !==
+        "INR"
     ) {
       return NextResponse.json(
         {
           error:
             "Payment amount does not match the selected plan.",
         },
-        { status: 400 }
+        {
+          status: 400,
+        }
       );
     }
 
-    // -----------------------------------------
+    // ========================================================
     // 6. Verify order ownership
-    // -----------------------------------------
+    // ========================================================
 
     if (
       order.notes?.user_id !==
@@ -187,13 +201,15 @@ export async function POST(
           error:
             "Payment order does not belong to this user.",
         },
-        { status: 403 }
+        {
+          status: 403,
+        }
       );
     }
 
-    // -----------------------------------------
-    // 7. Validate charity metadata
-    // -----------------------------------------
+    // ========================================================
+    // 7. Validate charity allocation
+    // ========================================================
 
     if (
       !charityId ||
@@ -208,19 +224,30 @@ export async function POST(
           error:
             "Invalid charity allocation.",
         },
-        { status: 400 }
+        {
+          status: 400,
+        }
       );
     }
 
     const {
       data: charity,
       error: charityError,
-    } = await supabase
-      .from("charities")
-      .select("id, name")
-      .eq("id", charityId)
-      .eq("active", true)
-      .single();
+    } =
+      await supabase
+        .from("charities")
+        .select(
+          "id, name"
+        )
+        .eq(
+          "id",
+          charityId
+        )
+        .eq(
+          "active",
+          true
+        )
+        .single();
 
     if (
       charityError ||
@@ -231,42 +258,56 @@ export async function POST(
           error:
             "Selected charity is no longer available.",
         },
-        { status: 400 }
+        {
+          status: 400,
+        }
       );
     }
 
-    // -----------------------------------------
-    // 8. Use admin client for transaction data
-    // -----------------------------------------
+    // ========================================================
+    // 8. Admin client
+    // ========================================================
 
     const admin =
       createAdminClient();
 
-    // -----------------------------------------
-    // 9. Idempotency
-    // -----------------------------------------
+    // ========================================================
+    // 9. Payment idempotency
+    // ========================================================
 
     const {
       data: existingPayment,
-    } = await admin
-      .from("payments")
-      .select("id")
-      .eq(
-        "provider_payment_id",
-        razorpay_payment_id
-      )
-      .maybeSingle();
+      error:
+        existingPaymentError,
+    } =
+      await admin
+        .from("payments")
+        .select("id")
+        .eq(
+          "provider_payment_id",
+          razorpay_payment_id
+        )
+        .maybeSingle();
+
+    if (
+      existingPaymentError
+    ) {
+      throw new Error(
+        existingPaymentError.message
+      );
+    }
 
     if (existingPayment) {
       return NextResponse.json({
         success: true,
-        alreadyProcessed: true,
+        alreadyProcessed:
+          true,
       });
     }
 
-    // -----------------------------------------
+    // ========================================================
     // 10. Calculate charity allocation
-    // -----------------------------------------
+    // ========================================================
 
     const charityAmountPaise =
       Math.floor(
@@ -275,9 +316,9 @@ export async function POST(
           100
       );
 
-    // -----------------------------------------
+    // ========================================================
     // 11. Calculate subscription period
-    // -----------------------------------------
+    // ========================================================
 
     const now =
       new Date();
@@ -300,56 +341,59 @@ export async function POST(
       );
     }
 
-    // -----------------------------------------
+    // ========================================================
     // 12. Create/update subscription
-    // -----------------------------------------
+    // ========================================================
 
     const {
       data: subscription,
       error:
         subscriptionError,
-    } = await admin
-      .from("subscriptions")
-      .upsert(
-        {
-          user_id:
-            user.id,
+    } =
+      await admin
+        .from(
+          "subscriptions"
+        )
+        .upsert(
+          {
+            user_id:
+              user.id,
 
-          plan:
-            orderPlan,
+            plan:
+              orderPlan,
 
-          status:
-            "active",
+            status:
+              "active",
 
-          amount:
-            selectedPlan.amount /
-            100,
+            amount:
+              selectedPlan.amount /
+              100,
 
-          charity_id:
-            charityId,
+            charity_id:
+              charityId,
 
-          charity_percentage:
-            percentage,
+            charity_percentage:
+              percentage,
 
-          current_period_start:
-            now.toISOString(),
+            current_period_start:
+              now.toISOString(),
 
-          current_period_end:
-            periodEnd.toISOString(),
+            current_period_end:
+              periodEnd.toISOString(),
 
-          stripe_customer_id:
-            null,
+            stripe_customer_id:
+              null,
 
-          stripe_subscription_id:
-            null,
-        },
-        {
-          onConflict:
-            "user_id",
-        }
-      )
-      .select("id")
-      .single();
+            stripe_subscription_id:
+              null,
+          },
+          {
+            onConflict:
+              "user_id",
+          }
+        )
+        .select("id")
+        .single();
 
     if (
       subscriptionError ||
@@ -365,54 +409,63 @@ export async function POST(
           error:
             "Payment succeeded but subscription creation failed.",
         },
-        { status: 500 }
+        {
+          status: 500,
+        }
       );
     }
 
-    // -----------------------------------------
+    // ========================================================
     // 13. Record payment
-    // -----------------------------------------
+    // ========================================================
 
     const {
+      data: payment,
       error: paymentError,
-    } = await admin
-      .from("payments")
-      .insert({
-        user_id:
-          user.id,
+    } =
+      await admin
+        .from("payments")
+        .insert({
+          user_id:
+            user.id,
 
-        subscription_id:
-          subscription.id,
+          subscription_id:
+            subscription.id,
 
-        provider_payment_id:
-          razorpay_payment_id,
+          provider_payment_id:
+            razorpay_payment_id,
 
-        provider_order_id:
-          razorpay_order_id,
+          provider_order_id:
+            razorpay_order_id,
 
-        payment_provider:
-          "razorpay",
+          payment_provider:
+            "razorpay",
 
-        plan_id:
-          orderPlan,
+          plan_id:
+            orderPlan,
 
-        amount_paise:
-          selectedPlan.amount,
+          amount_paise:
+            selectedPlan.amount,
 
-        charity_id:
-          charityId,
+          charity_id:
+            charityId,
 
-        charity_pct:
-          percentage,
+          charity_pct:
+            percentage,
 
-        charity_amount_paise:
-          charityAmountPaise,
+          charity_amount_paise:
+            charityAmountPaise,
 
-        paid_at:
-          now.toISOString(),
-      });
+          paid_at:
+            now.toISOString(),
+        })
+        .select("id")
+        .single();
 
-    if (paymentError) {
+    if (
+      paymentError ||
+      !payment
+    ) {
       console.error(
         "Payment record creation failed:",
         paymentError
@@ -423,65 +476,79 @@ export async function POST(
           error:
             "Payment succeeded but payment record failed.",
         },
-        { status: 500 }
+        {
+          status: 500,
+        }
       );
     }
 
-    // -----------------------------------------
+    // ========================================================
     // 14. Record charity contribution
-    // -----------------------------------------
+    // ========================================================
 
     const {
       error:
         contributionError,
-    } = await admin
-      .from(
-        "charity_contributions"
-      )
-      .insert({
-        user_id:
-          user.id,
+    } =
+      await admin
+        .from(
+          "charity_contributions"
+        )
+        .insert({
+          user_id:
+            user.id,
 
-        subscription_id:
-          subscription.id,
+          subscription_id:
+            subscription.id,
 
-        payment_id:
-          null,
+          // IMPORTANT:
+          // Link contribution to the actual payment.
+          payment_id:
+            payment.id,
 
-        charity_id:
-          charityId,
+          charity_id:
+            charityId,
 
-        percentage:
-          percentage,
+          percentage:
+            percentage,
 
-        amount_paise:
-          charityAmountPaise,
+          amount_paise:
+            charityAmountPaise,
 
-        status:
-          "allocated",
+          status:
+            "allocated",
 
-        allocated_at:
-          now.toISOString(),
-      });
+          allocated_at:
+            now.toISOString(),
+        });
 
-    if (contributionError) {
+    if (
+      contributionError
+    ) {
       console.error(
         "Charity contribution recording failed:",
         contributionError
       );
 
-      // We do not fail the payment here because
-      // the actual payment and subscription have
-      // already succeeded.
+      // The Razorpay payment and subscription
+      // have already succeeded.
       //
-      // The admin can reconcile this record later.
+      // We return success but log the failed
+      // contribution so it can be reconciled.
     }
+
+    // ========================================================
+    // 15. Return success
+    // ========================================================
 
     return NextResponse.json({
       success: true,
 
       subscriptionId:
         subscription.id,
+
+      paymentId:
+        payment.id,
 
       plan:
         orderPlan,
@@ -507,7 +574,9 @@ export async function POST(
         error:
           "Unable to verify payment.",
       },
-      { status: 500 }
+      {
+        status: 500,
+      }
     );
   }
 }

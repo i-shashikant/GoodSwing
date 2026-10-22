@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+
 import {
   simulateDraw,
   executeAndPublishDraw,
@@ -9,124 +10,384 @@ import {
 } from "@/lib/draw-engine";
 
 async function requireAdmin() {
-  const supabase = await createClient();
+  const supabase =
+    await createClient();
 
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } =
+    await supabase.auth.getUser();
 
   if (!user) {
-    throw new Error("Unauthorized");
+    throw new Error(
+      "Unauthorized"
+    );
   }
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single();
+  const {
+    data: profile,
+  } =
+    await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single();
 
-  if (profile?.role !== "admin") {
-    throw new Error("Admin access required");
+  if (
+    profile?.role !==
+    "admin"
+  ) {
+    throw new Error(
+      "Admin access required"
+    );
   }
 
-  return { supabase, user };
+  return {
+    supabase,
+    user,
+  };
 }
 
-export async function createDraw(formData: FormData) {
-  const { supabase, user } = await requireAdmin();
+export async function createDraw(
+  formData: FormData
+) {
+  const {
+    supabase,
+    user,
+  } = await requireAdmin();
 
-  const drawMonth = String(formData.get("draw_month") || "").trim();
-  const drawDate = String(formData.get("draw_date") || "").trim();
-  const drawMethod = String(formData.get("draw_method") || "random").trim();
-  const prizePool = Number(formData.get("prize_pool") || 0);
-  const jackpotRollover = Number(formData.get("jackpot_rollover") || 0);
+  const drawMonth =
+    String(
+      formData.get(
+        "draw_month"
+      ) || ""
+    ).trim();
+
+  const drawDate =
+    String(
+      formData.get(
+        "draw_date"
+      ) || ""
+    ).trim();
+
+  const drawMethod =
+    String(
+      formData.get(
+        "draw_method"
+      ) || "random"
+    ).trim();
+
+  const prizePool =
+    Number(
+      formData.get(
+        "prize_pool"
+      ) || 0
+    );
+
+  // ----------------------------------------------------------
+  // Validation
+  // ----------------------------------------------------------
 
   if (!drawMonth) {
-    throw new Error("Draw month is required");
+    throw new Error(
+      "Draw month is required."
+    );
   }
 
   if (!drawDate) {
-    throw new Error("Draw date is required");
+    throw new Error(
+      "Draw date is required."
+    );
   }
 
-  if (!["random", "weighted"].includes(drawMethod)) {
-    throw new Error("Invalid draw method. Must be random or weighted (algorithmic).");
+  if (
+    ![
+      "random",
+      "weighted",
+    ].includes(drawMethod)
+  ) {
+    throw new Error(
+      "Invalid draw method. Must be random or weighted."
+    );
   }
 
-  if (prizePool < 0 || jackpotRollover < 0) {
-    throw new Error("Amounts cannot be negative");
+  if (
+    !Number.isFinite(
+      prizePool
+    ) ||
+    prizePool < 0
+  ) {
+    throw new Error(
+      "Prize pool cannot be negative."
+    );
   }
 
-  const { data: existingDraw } = await supabase
-    .from("draws")
-    .select("id")
-    .eq("draw_month", `${drawMonth}-01`)
-    .maybeSingle();
+  const drawMonthDate =
+    `${drawMonth}-01`;
+
+  const parsedDrawDate =
+    new Date(drawDate);
+
+  if (
+    Number.isNaN(
+      parsedDrawDate.getTime()
+    )
+  ) {
+    throw new Error(
+      "Invalid draw date."
+    );
+  }
+
+  // ----------------------------------------------------------
+  // Prevent duplicate monthly draws
+  // ----------------------------------------------------------
+
+  const {
+    data: existingDraw,
+  } =
+    await supabase
+      .from("draws")
+      .select("id")
+      .eq(
+        "draw_month",
+        drawMonthDate
+      )
+      .maybeSingle();
 
   if (existingDraw) {
-    throw new Error("A draw already exists for this month.");
+    throw new Error(
+      "A draw already exists for this month."
+    );
   }
 
-  const { error } = await supabase.from("draws").insert({
-    draw_month: `${drawMonth}-01`,
-    draw_date: new Date(drawDate).toISOString(),
-    status: "draft",
-    draw_method: drawMethod,
-    prize_pool: prizePool,
-    jackpot_rollover: jackpotRollover,
-    created_by: user.id,
-  });
+  // ----------------------------------------------------------
+  // Automatically get previous jackpot rollover
+  // ----------------------------------------------------------
+
+  const {
+    data: previousDraw,
+  } =
+    await supabase
+      .from("draws")
+      .select(
+        "jackpot_rollover_out"
+      )
+      .eq(
+        "status",
+        "completed"
+      )
+      .lt(
+        "draw_month",
+        drawMonthDate
+      )
+      .order(
+        "draw_month",
+        {
+          ascending:
+            false,
+        }
+      )
+      .limit(1)
+      .maybeSingle();
+
+  const jackpotRollover =
+    Number(
+      previousDraw
+        ?.jackpot_rollover_out ??
+        0
+    );
+
+  // ----------------------------------------------------------
+  // Create draft
+  // ----------------------------------------------------------
+
+  const {
+    error,
+  } =
+    await supabase
+      .from("draws")
+      .insert({
+        draw_month:
+          drawMonthDate,
+
+        draw_date:
+          parsedDrawDate.toISOString(),
+
+        status:
+          "draft",
+
+        draw_method:
+          drawMethod,
+
+        prize_pool:
+          prizePool,
+
+        jackpot_rollover:
+          jackpotRollover,
+
+        jackpot_rollover_out:
+          0,
+
+        created_by:
+          user.id,
+      });
 
   if (error) {
-    throw new Error(error.message);
+    throw new Error(
+      error.message
+    );
   }
 
-  revalidatePath("/admin");
-  revalidatePath("/admin/draws");
-  revalidatePath("/dashboard");
+  revalidatePath(
+    "/admin"
+  );
+
+  revalidatePath(
+    "/admin/draws"
+  );
+
+  revalidatePath(
+    "/dashboard"
+  );
 }
 
-export async function updateDrawStatus(drawId: string, status: string) {
-  const { supabase } = await requireAdmin();
+export async function updateDrawStatus(
+  drawId: string,
+  status: string
+) {
+  const {
+    supabase,
+  } = await requireAdmin();
 
-  const allowedStatuses = ["draft", "open", "closed", "completed"];
+  const allowedStatuses =
+    [
+      "draft",
+      "open",
+      "closed",
+      "completed",
+    ];
 
-  if (!allowedStatuses.includes(status)) {
-    throw new Error("Invalid draw status");
+  if (
+    !allowedStatuses.includes(
+      status
+    )
+  ) {
+    throw new Error(
+      "Invalid draw status."
+    );
   }
 
-  const { error } = await supabase
-    .from("draws")
-    .update({
-      status,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", drawId);
+  // Don't allow changes to a completed draw.
+  if (
+    status !==
+    "completed"
+  ) {
+    const {
+      data: existingDraw,
+    } =
+      await supabase
+        .from("draws")
+        .select(
+          "status"
+        )
+        .eq(
+          "id",
+          drawId
+        )
+        .single();
+
+    if (
+      existingDraw?.status ===
+      "completed"
+    ) {
+      throw new Error(
+        "Completed draws cannot be modified."
+      );
+    }
+  }
+
+  const {
+    error,
+  } =
+    await supabase
+      .from("draws")
+      .update({
+        status,
+
+        updated_at:
+          new Date().toISOString(),
+      })
+      .eq(
+        "id",
+        drawId
+      );
 
   if (error) {
-    throw new Error(error.message);
+    throw new Error(
+      error.message
+    );
   }
 
-  revalidatePath("/admin");
-  revalidatePath("/admin/draws");
-  revalidatePath("/dashboard");
+  revalidatePath(
+    "/admin"
+  );
+
+  revalidatePath(
+    "/admin/draws"
+  );
+
+  revalidatePath(
+    "/dashboard"
+  );
 }
 
-export async function runSimulation(drawId: string, method?: DrawMethod) {
+export async function runSimulation(
+  drawId: string,
+  method?: DrawMethod
+) {
   await requireAdmin();
-  return await simulateDraw(drawId, method);
+
+  return simulateDraw(
+    drawId,
+    method
+  );
 }
 
 export async function publishDraw(
   drawId: string,
   method: DrawMethod,
-  numbers: [number, number, number, number, number]
+  numbers: [
+    number,
+    number,
+    number,
+    number,
+    number
+  ]
 ) {
   await requireAdmin();
-  const result = await executeAndPublishDraw(drawId, method, numbers);
-  revalidatePath("/admin");
-  revalidatePath("/admin/draws");
-  revalidatePath("/admin/winners");
-  revalidatePath("/dashboard");
+
+  const result =
+    await executeAndPublishDraw(
+      drawId,
+      method,
+      numbers
+    );
+
+  revalidatePath(
+    "/admin"
+  );
+
+  revalidatePath(
+    "/admin/draws"
+  );
+
+  revalidatePath(
+    "/admin/winners"
+  );
+
+  revalidatePath(
+    "/dashboard"
+  );
+
   return result;
 }

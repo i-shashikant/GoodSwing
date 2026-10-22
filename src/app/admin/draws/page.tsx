@@ -122,21 +122,6 @@ export default async function AdminDrawsPage() {
               </p>
             </div>
 
-            <div>
-              <label className="mb-2 block text-sm font-medium">
-                Jackpot rollover (₹)
-              </label>
-
-              <input
-                name="jackpot_rollover"
-                type="number"
-                min="0"
-                step="1"
-                defaultValue="0"
-                className="w-full rounded-xl border bg-transparent px-4 py-3 outline-none focus:ring-2"
-              />
-            </div>
-
             <div className="flex items-end">
               <button
                 type="submit"
