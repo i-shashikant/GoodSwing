@@ -28,6 +28,7 @@ export async function reviewWinner(formData: FormData) {
   if (error) throw new Error(error.message);
 
   revalidatePath("/admin/winners");
+  revalidatePath("/admin");
   revalidatePath("/dashboard/winnings");
 }
 

@@ -125,6 +125,8 @@ export async function submitWinnerProof(formData: FormData) {
   // Refresh the winnings page.
   revalidatePath("/dashboard/winnings");
 
+  revalidatePath("/admin");
+
   // Also refresh the admin winner page.
   revalidatePath("/admin/winners");
 }
