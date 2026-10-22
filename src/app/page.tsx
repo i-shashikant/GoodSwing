@@ -139,7 +139,7 @@ export default function Home() {
             </h3>
 
             <p className="mt-3 text-sm leading-6 text-muted-foreground">
-              Eligible members can participate in GoodSwing's
+              Eligible members can participate in GoodSwing&apos;s
               scheduled prize draws.
             </p>
           </div>

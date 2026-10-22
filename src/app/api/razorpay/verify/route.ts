@@ -8,21 +8,23 @@ import { razorpay } from "@/lib/razorpay";
 const PLANS = {
   monthly: {
     amount: 49900,
-    days: 31,
   },
+
   yearly: {
     amount: 499000,
-    days: 365,
   },
 } as const;
 
-export async function POST(request: Request) {
+export async function POST(
+  request: Request
+) {
   try {
-    // ---------------------------------------------------------
-    // 1. Authenticate user
-    // ---------------------------------------------------------
+    // -----------------------------------------
+    // 1. Authenticate
+    // -----------------------------------------
 
-    const supabase = await createClient();
+    const supabase =
+      await createClient();
 
     const {
       data: { user },
@@ -30,24 +32,25 @@ export async function POST(request: Request) {
 
     if (!user) {
       return NextResponse.json(
-        { error: "You must be logged in." },
+        {
+          error:
+            "You must be logged in.",
+        },
         { status: 401 }
       );
     }
 
-    // ---------------------------------------------------------
-    // 2. Read request
-    // ---------------------------------------------------------
+    // -----------------------------------------
+    // 2. Read payment response
+    // -----------------------------------------
 
-    const body = await request.json();
+    const body =
+      await request.json();
 
     const {
       razorpay_payment_id,
       razorpay_order_id,
       razorpay_signature,
-      plan,
-      charityId,
-      charityPercentage,
     } = body;
 
     if (
@@ -56,82 +59,110 @@ export async function POST(request: Request) {
       !razorpay_signature
     ) {
       return NextResponse.json(
-        { error: "Missing payment verification data." },
-        { status: 400 }
-      );
-    }
-
-    if (!(plan in PLANS)) {
-      return NextResponse.json(
-        { error: "Invalid subscription plan." },
-        { status: 400 }
-      );
-    }
-
-    const selectedPlan =
-      PLANS[plan as keyof typeof PLANS];
-
-    // ---------------------------------------------------------
-    // 3. Validate charity percentage
-    // ---------------------------------------------------------
-
-    const percentage = Number(charityPercentage);
-
-    if (
-      !Number.isInteger(percentage) ||
-      percentage < 10 ||
-      percentage > 100
-    ) {
-      return NextResponse.json(
         {
           error:
-            "Charity percentage must be between 10% and 100%.",
+            "Missing payment verification data.",
         },
         { status: 400 }
       );
     }
 
-    // ---------------------------------------------------------
-    // 4. Verify Razorpay signature
-    // ---------------------------------------------------------
+    // -----------------------------------------
+    // 3. Verify Razorpay signature
+    // -----------------------------------------
 
-    const secret = process.env.RAZORPAY_KEY_SECRET;
+    const secret =
+      process.env.RAZORPAY_KEY_SECRET;
 
     if (!secret) {
-      throw new Error("RAZORPAY_KEY_SECRET is not configured.");
+      throw new Error(
+        "RAZORPAY_KEY_SECRET is not configured."
+      );
     }
 
-    const expectedSignature = crypto
-      .createHmac("sha256", secret)
-      .update(
-        `${razorpay_order_id}|${razorpay_payment_id}`
-      )
-      .digest("hex");
+    const expectedSignature =
+      crypto
+        .createHmac(
+          "sha256",
+          secret
+        )
+        .update(
+          `${razorpay_order_id}|${razorpay_payment_id}`
+        )
+        .digest("hex");
+
+    const providedBuffer =
+      Buffer.from(
+        razorpay_signature
+      );
+
+    const expectedBuffer =
+      Buffer.from(
+        expectedSignature
+      );
 
     if (
-      expectedSignature.length !==
-      razorpay_signature.length ||
+      providedBuffer.length !==
+        expectedBuffer.length ||
       !crypto.timingSafeEqual(
-        Buffer.from(expectedSignature),
-        Buffer.from(razorpay_signature)
+        providedBuffer,
+        expectedBuffer
       )
     ) {
       return NextResponse.json(
-        { error: "Invalid payment signature." },
+        {
+          error:
+            "Invalid payment signature.",
+        },
         { status: 400 }
       );
     }
 
-    // ---------------------------------------------------------
-    // 5. Fetch order directly from Razorpay
-    // ---------------------------------------------------------
+    // -----------------------------------------
+    // 4. Fetch the order from Razorpay
+    // -----------------------------------------
 
-    const order = await razorpay.orders.fetch(
-      razorpay_order_id
+    const order =
+      await razorpay.orders.fetch(
+        razorpay_order_id
+      );
+
+    const orderPlan =
+      order.notes?.plan as
+        | keyof typeof PLANS
+        | undefined;
+
+    const charityId =
+      order.notes?.charity_id;
+
+    const percentage = Number(
+      order.notes
+        ?.charity_percentage
     );
 
     if (
-      Number(order.amount) !== selectedPlan.amount ||
+      !orderPlan ||
+      !PLANS[orderPlan]
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Invalid payment order metadata.",
+        },
+        { status: 400 }
+      );
+    }
+
+    // -----------------------------------------
+    // 5. Validate amount/currency
+    // -----------------------------------------
+
+    const selectedPlan =
+      PLANS[orderPlan];
+
+    if (
+      Number(order.amount) !==
+        selectedPlan.amount ||
       order.currency !== "INR"
     ) {
       return NextResponse.json(
@@ -143,11 +174,14 @@ export async function POST(request: Request) {
       );
     }
 
-    // ---------------------------------------------------------
-    // 6. Make sure this order belongs to this user
-    // ---------------------------------------------------------
+    // -----------------------------------------
+    // 6. Verify order ownership
+    // -----------------------------------------
 
-    if (order.notes?.user_id !== user.id) {
+    if (
+      order.notes?.user_id !==
+      user.id
+    ) {
       return NextResponse.json(
         {
           error:
@@ -157,19 +191,41 @@ export async function POST(request: Request) {
       );
     }
 
-    // ---------------------------------------------------------
-    // 7. Verify charity
-    // ---------------------------------------------------------
+    // -----------------------------------------
+    // 7. Validate charity metadata
+    // -----------------------------------------
 
-    const { data: charity, error: charityError } =
-      await supabase
-        .from("charities")
-        .select("id, name")
-        .eq("id", charityId)
-        .eq("active", true)
-        .single();
+    if (
+      !charityId ||
+      !Number.isInteger(
+        percentage
+      ) ||
+      percentage < 10 ||
+      percentage > 100
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Invalid charity allocation.",
+        },
+        { status: 400 }
+      );
+    }
 
-    if (charityError || !charity) {
+    const {
+      data: charity,
+      error: charityError,
+    } = await supabase
+      .from("charities")
+      .select("id, name")
+      .eq("id", charityId)
+      .eq("active", true)
+      .single();
+
+    if (
+      charityError ||
+      !charity
+    ) {
       return NextResponse.json(
         {
           error:
@@ -179,13 +235,20 @@ export async function POST(request: Request) {
       );
     }
 
-    // ---------------------------------------------------------
-    // 8. Check duplicate payment
-    // ---------------------------------------------------------
+    // -----------------------------------------
+    // 8. Use admin client for transaction data
+    // -----------------------------------------
 
-    const admin = createAdminClient();
+    const admin =
+      createAdminClient();
 
-    const { data: existingPayment } = await admin
+    // -----------------------------------------
+    // 9. Idempotency
+    // -----------------------------------------
+
+    const {
+      data: existingPayment,
+    } = await admin
       .from("payments")
       .select("id")
       .eq(
@@ -201,66 +264,97 @@ export async function POST(request: Request) {
       });
     }
 
-    // ---------------------------------------------------------
-    // 9. Calculate charity amount
-    // ---------------------------------------------------------
+    // -----------------------------------------
+    // 10. Calculate charity allocation
+    // -----------------------------------------
 
-    const charityAmountPaise = Math.floor(
-      (selectedPlan.amount * percentage) / 100
-    );
+    const charityAmountPaise =
+      Math.floor(
+        (selectedPlan.amount *
+          percentage) /
+          100
+      );
 
-    // Example:
-    // ₹4,990 × 35% = ₹1,746.50
-    //
-    // Razorpay still charges ₹4,990.
-    // Charity allocation is calculated separately.
+    // -----------------------------------------
+    // 11. Calculate subscription period
+    // -----------------------------------------
 
-    // ---------------------------------------------------------
-    // 10. Calculate subscription period
-    // ---------------------------------------------------------
+    const now =
+      new Date();
 
-    const now = new Date();
+    const periodEnd =
+      new Date(now);
 
-    const periodEnd = new Date(now);
-
-    if (plan === "monthly") {
+    if (
+      orderPlan ===
+      "monthly"
+    ) {
       periodEnd.setMonth(
-        periodEnd.getMonth() + 1
+        periodEnd.getMonth() +
+          1
       );
     } else {
       periodEnd.setFullYear(
-        periodEnd.getFullYear() + 1
+        periodEnd.getFullYear() +
+          1
       );
     }
 
-    // ---------------------------------------------------------
-    // 11. Create/update subscription
-    // ---------------------------------------------------------
+    // -----------------------------------------
+    // 12. Create/update subscription
+    // -----------------------------------------
 
-    const { data: subscription, error: subscriptionError } =
-      await admin
-        .from("subscriptions")
-        .upsert(
-          {
-            user_id: user.id,
-            plan,
-            status: "active",
-            amount: selectedPlan.amount / 100,
-            charity_id: charityId,
-            charity_percentage: percentage,
-            current_period_start: now.toISOString(),
-            current_period_end: periodEnd.toISOString(),
-            stripe_customer_id: null,
-            stripe_subscription_id: null,
-          },
-          {
-            onConflict: "user_id",
-          }
-        )
-        .select("id")
-        .single();
+    const {
+      data: subscription,
+      error:
+        subscriptionError,
+    } = await admin
+      .from("subscriptions")
+      .upsert(
+        {
+          user_id:
+            user.id,
 
-    if (subscriptionError || !subscription) {
+          plan:
+            orderPlan,
+
+          status:
+            "active",
+
+          amount:
+            selectedPlan.amount /
+            100,
+
+          charity_id:
+            charityId,
+
+          charity_percentage:
+            percentage,
+
+          current_period_start:
+            now.toISOString(),
+
+          current_period_end:
+            periodEnd.toISOString(),
+
+          stripe_customer_id:
+            null,
+
+          stripe_subscription_id:
+            null,
+        },
+        {
+          onConflict:
+            "user_id",
+        }
+      )
+      .select("id")
+      .single();
+
+    if (
+      subscriptionError ||
+      !subscription
+    ) {
       console.error(
         "Subscription creation failed:",
         subscriptionError
@@ -275,23 +369,47 @@ export async function POST(request: Request) {
       );
     }
 
-    // ---------------------------------------------------------
-    // 12. Record payment
-    // ---------------------------------------------------------
+    // -----------------------------------------
+    // 13. Record payment
+    // -----------------------------------------
 
-    const { error: paymentError } =
-      await admin.from("payments").insert({
-        user_id: user.id,
-        subscription_id: subscription.id,
-        provider_payment_id: razorpay_payment_id,
-        provider_order_id: razorpay_order_id,
-        payment_provider: "razorpay",
-        plan_id: plan,
-        amount_paise: selectedPlan.amount,
-        charity_id: charityId,
-        charity_pct: percentage,
-        charity_amount_paise: charityAmountPaise,
-        paid_at: now.toISOString(),
+    const {
+      error: paymentError,
+    } = await admin
+      .from("payments")
+      .insert({
+        user_id:
+          user.id,
+
+        subscription_id:
+          subscription.id,
+
+        provider_payment_id:
+          razorpay_payment_id,
+
+        provider_order_id:
+          razorpay_order_id,
+
+        payment_provider:
+          "razorpay",
+
+        plan_id:
+          orderPlan,
+
+        amount_paise:
+          selectedPlan.amount,
+
+        charity_id:
+          charityId,
+
+        charity_pct:
+          percentage,
+
+        charity_amount_paise:
+          charityAmountPaise,
+
+        paid_at:
+          now.toISOString(),
       });
 
     if (paymentError) {
@@ -309,16 +427,73 @@ export async function POST(request: Request) {
       );
     }
 
-    // ---------------------------------------------------------
-    // 13. Success
-    // ---------------------------------------------------------
+    // -----------------------------------------
+    // 14. Record charity contribution
+    // -----------------------------------------
+
+    const {
+      error:
+        contributionError,
+    } = await admin
+      .from(
+        "charity_contributions"
+      )
+      .insert({
+        user_id:
+          user.id,
+
+        subscription_id:
+          subscription.id,
+
+        payment_id:
+          null,
+
+        charity_id:
+          charityId,
+
+        percentage:
+          percentage,
+
+        amount_paise:
+          charityAmountPaise,
+
+        status:
+          "allocated",
+
+        allocated_at:
+          now.toISOString(),
+      });
+
+    if (contributionError) {
+      console.error(
+        "Charity contribution recording failed:",
+        contributionError
+      );
+
+      // We do not fail the payment here because
+      // the actual payment and subscription have
+      // already succeeded.
+      //
+      // The admin can reconcile this record later.
+    }
 
     return NextResponse.json({
       success: true,
-      subscriptionId: subscription.id,
-      plan,
-      amount: selectedPlan.amount,
-      charityPercentage: percentage,
+
+      subscriptionId:
+        subscription.id,
+
+      plan:
+        orderPlan,
+
+      amount:
+        selectedPlan.amount,
+
+      charityId,
+
+      charityPercentage:
+        percentage,
+
       charityAmountPaise,
     });
   } catch (error) {

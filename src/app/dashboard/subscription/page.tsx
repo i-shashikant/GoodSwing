@@ -1,5 +1,10 @@
-import { requireUser, getSubscription } from "@/lib/auth";
+import {
+  requireUser,
+  getSubscription,
+} from "@/lib/auth";
+
 import { createClient } from "@/lib/supabase/server";
+
 import SubscriptionCheckout from "@/components/payment/SubscriptionCheckout";
 
 const PLANS = [
@@ -7,28 +12,47 @@ const PLANS = [
     id: "monthly" as const,
     name: "Monthly",
     price: 499,
-    description: "Flexible month-to-month access",
+    description:
+      "Flexible month-to-month access.",
   },
+
   {
     id: "yearly" as const,
     name: "Yearly",
     price: 4990,
-    description: "Best value for long-term members",
+    description:
+      "Best value for long-term members.",
   },
 ];
 
 export default async function SubscriptionPage() {
   await requireUser();
 
-  const subscription = await getSubscription();
+  const subscription =
+    await getSubscription();
 
-  const supabase = await createClient();
+  const supabase =
+    await createClient();
 
-  const { data: charities } = await supabase
+  const {
+    data: charities,
+    error,
+  } = await supabase
     .from("charities")
-    .select("id, name, description, category")
+    .select(
+      "id, name, description, category"
+    )
     .eq("active", true)
+    .order("featured", {
+      ascending: false,
+    })
     .order("name");
+
+  if (error) {
+    throw new Error(
+      "Unable to load charities."
+    );
+  }
 
   return (
     <main className="min-h-screen px-6 py-10 md:px-10">
@@ -39,11 +63,13 @@ export default async function SubscriptionPage() {
           </p>
 
           <h1 className="mt-2 text-4xl font-semibold tracking-tight">
-            Play your game. Make an impact.
+            Play your game. Make an
+            impact.
           </h1>
 
           <p className="mt-3 max-w-2xl text-muted-foreground">
-            Choose your membership plan and the charity you want your
+            Choose your membership plan
+            and the charity you want your
             contribution to support.
           </p>
         </div>
@@ -64,21 +90,36 @@ export default async function SubscriptionPage() {
               </span>
             </div>
 
+            <p className="mt-2 text-sm text-muted-foreground">
+              ₹
+              {Number(
+                subscription.amount
+              ).toLocaleString(
+                "en-IN"
+              )}
+            </p>
+
             {subscription.current_period_end && (
-              <p className="mt-2 text-sm text-muted-foreground">
+              <p className="mt-1 text-sm text-muted-foreground">
                 Current period ends{" "}
                 {new Date(
                   subscription.current_period_end
-                ).toLocaleDateString("en-IN")}
+                ).toLocaleDateString(
+                  "en-IN"
+                )}
               </p>
             )}
           </section>
         )}
 
-        <SubscriptionCheckout
-          plans={PLANS}
-          charities={charities ?? []}
-        />
+        <div className="mt-8">
+          <SubscriptionCheckout
+            plans={PLANS}
+            charities={
+              charities ?? []
+            }
+          />
+        </div>
       </div>
     </main>
   );

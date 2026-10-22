@@ -15,7 +15,7 @@ export async function addScore(formData: FormData) {
   }
 
   const score = Number(formData.get("score"));
-  const playedAt = String(formData.get("playedAt"));
+  const playedAt = String(formData.get("playedAt") ?? "").trim();
 
   if (
     !Number.isInteger(score) ||
@@ -23,34 +23,52 @@ export async function addScore(formData: FormData) {
     score > 45 ||
     !playedAt
   ) {
-    throw new Error("Invalid score data");
+    throw new Error("Please enter a valid Stableford score (1–45) and date.");
   }
 
-  const { error } = await supabase.from("scores").insert({
+  // Check if date is in future
+  const playedDate = new Date(`${playedAt}T00:00:00`);
+  const today = new Date();
+  today.setHours(23, 59, 59, 999);
+  if (playedDate > today) {
+    throw new Error("Score date cannot be in the future.");
+  }
+
+  // Insert the new score
+  const { error: insertError } = await supabase.from("scores").insert({
     user_id: user.id,
     score,
     played_at: playedAt,
   });
 
-  if (error) {
-    if (error.code === "23505") {
+  if (insertError) {
+    if (insertError.code === "23505") {
       throw new Error(
-        "You already have a score recorded for this date."
+        "A score for this date already exists. Duplicate scores for the same date are not allowed — please edit or delete the existing round."
       );
     }
+    throw new Error(insertError.message);
+  }
 
-    throw new Error(error.message);
+  // PRD § 05: "Only the latest 5 scores are retained at any time. A new score replaces the oldest stored score automatically."
+  const { data: allScores } = await supabase
+    .from("scores")
+    .select("id, played_at")
+    .eq("user_id", user.id)
+    .order("played_at", { ascending: false });
+
+  if (allScores && allScores.length > 5) {
+    const idsToDelete = allScores.slice(5).map((item) => item.id);
+    if (idsToDelete.length > 0) {
+      await supabase.from("scores").delete().in("id", idsToDelete);
+    }
   }
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/scores");
 }
 
-
-export async function updateScore(
-  id: string,
-  formData: FormData
-) {
+export async function updateScore(id: string, formData: FormData) {
   const supabase = await createClient();
 
   const {
@@ -62,7 +80,7 @@ export async function updateScore(
   }
 
   const score = Number(formData.get("score"));
-  const playedAt = String(formData.get("playedAt"));
+  const playedAt = String(formData.get("playedAt") ?? "").trim();
 
   if (
     !Number.isInteger(score) ||
@@ -70,7 +88,14 @@ export async function updateScore(
     score > 45 ||
     !playedAt
   ) {
-    throw new Error("Invalid score data");
+    throw new Error("Please enter a valid Stableford score (1–45) and date.");
+  }
+
+  const playedDate = new Date(`${playedAt}T00:00:00`);
+  const today = new Date();
+  today.setHours(23, 59, 59, 999);
+  if (playedDate > today) {
+    throw new Error("Score date cannot be in the future.");
   }
 
   const { error } = await supabase
@@ -85,17 +110,29 @@ export async function updateScore(
   if (error) {
     if (error.code === "23505") {
       throw new Error(
-        "You already have a score recorded for this date."
+        "Another round is already recorded for this date. Duplicate scores for the same date are not allowed."
       );
     }
-
     throw new Error(error.message);
+  }
+
+  // Keep top 5 latest in case date update shifts order
+  const { data: allScores } = await supabase
+    .from("scores")
+    .select("id, played_at")
+    .eq("user_id", user.id)
+    .order("played_at", { ascending: false });
+
+  if (allScores && allScores.length > 5) {
+    const idsToDelete = allScores.slice(5).map((item) => item.id);
+    if (idsToDelete.length > 0) {
+      await supabase.from("scores").delete().in("id", idsToDelete);
+    }
   }
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/scores");
 }
-
 
 export async function deleteScore(id: string) {
   const supabase = await createClient();
