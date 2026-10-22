@@ -14,7 +14,7 @@ import {
 
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-
+import { createAdminClient } from "@/lib/supabase/admin";
 import { submitWinnerProof } from "./actions";
 
 export default async function WinningsPage() {
@@ -39,11 +39,39 @@ export default async function WinningsPage() {
         ascending: false,
       });
 
+
   if (error) {
     throw new Error(error.message);
   }
 
   const entries = winners ?? [];
+
+
+// Generate signed URLs for submitted winner proofs.
+//
+// The `winner-proofs` bucket is private, so the value stored in
+// `proof_path` cannot be used directly as an href.
+//
+// We generate the temporary signed URL on the server using the
+// admin client, which has permission to access the private bucket.
+const admin = createAdminClient();
+
+const proofUrls = new Map<string, string>();
+
+for (const winner of entries) {
+  if (!winner.proof_path) continue;
+
+  const { data: signedUrlData, error: signedUrlError } =
+    await admin.storage
+      .from("winner-proofs")
+      .createSignedUrl(winner.proof_path, 60 * 60);
+
+  if (!signedUrlError && signedUrlData?.signedUrl) {
+    proofUrls.set(winner.id, signedUrlData.signedUrl);
+  }
+}
+
+
 
   // Total prize value.
   const total = entries.reduce(
@@ -381,20 +409,24 @@ export default async function WinningsPage() {
                             </div>
                           )}
 
-                          {winner.proof_path && (
+                          {proofUrls.get(winner.id) ? (
                             <a
-                              href={
-                                winner.proof_path
-                              }
+                              href={proofUrls.get(winner.id)}
                               target="_blank"
-                              rel="noreferrer"
-                              className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-white/[0.08] px-4 py-3 text-sm font-semibold text-white/60 transition hover:border-teal-300/30 hover:bg-teal-300/[0.04] hover:text-teal-300"
+                              rel="noopener noreferrer"
+                              className="mt-4 inline-flex text-sm font-semibold text-emerald-300 hover:underline"
                             >
-                              <FileCheck2 className="h-4 w-4" />
-                              View submitted proof
+                              View submitted proof ↗
                             </a>
+                          ) : winner.proof_path ? (
+                            <p className="mt-4 text-xs text-amber-200/70">
+                              Proof exists but could not be opened.
+                            </p>
+                          ) : (
+                            <p className="mt-4 text-xs text-white/35">
+                              No proof submitted.
+                            </p>
                           )}
-
                           {verification ===
                             "approved" && (
                             <div className="flex items-center gap-3 rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.045] p-5">

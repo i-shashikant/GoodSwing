@@ -1,3 +1,4 @@
+
 "use server";
 
 import { revalidatePath } from "next/cache";
@@ -7,12 +8,10 @@ import { createAdminClient } from "@/lib/supabase/admin";
 /**
  * Submit proof for a winner claim.
  *
- * The action:
- * 1. Verifies the user is authenticated.
- * 2. Validates the uploaded proof image.
- * 3. Confirms the winner belongs to the current user.
- * 4. Uploads the proof to Supabase Storage.
- * 5. Updates the winner record with the proof URL.
+ * Important:
+ * We store ONLY the Supabase Storage path in `proof_path`.
+ * We do NOT store a public URL because the winner-proofs bucket
+ * is private and should be accessed through signed URLs.
  */
 export async function submitWinnerProof(formData: FormData) {
   // Create a Supabase client using the current user's session.
@@ -23,16 +22,15 @@ export async function submitWinnerProof(formData: FormData) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Proof submission requires authentication.
   if (!user) {
     throw new Error("Unauthorized");
   }
 
-  // Get the winner ID and uploaded proof file from the form.
+  // Get values from the submitted form.
   const winnerId = String(formData.get("winnerId") || "");
   const file = formData.get("proof");
 
-  // Validate that a winner ID and file were provided.
+  // Validate the uploaded file.
   if (
     !winnerId ||
     !(file instanceof File) ||
@@ -41,26 +39,24 @@ export async function submitWinnerProof(formData: FormData) {
     throw new Error("Please choose a proof image.");
   }
 
-  // Limit proof uploads to 5 MB.
+  // Maximum file size: 5 MB.
   if (file.size > 5 * 1024 * 1024) {
     throw new Error("Proof image must be 5MB or smaller.");
   }
 
-  // Only image files are accepted as winner proof.
+  // Only images are allowed.
   if (!file.type.startsWith("image/")) {
     throw new Error("Proof must be an image.");
   }
 
-  // Use the admin client for storage and winner updates.
+  // Admin client is used for the private storage bucket
+  // and protected winner record update.
   const admin = createAdminClient();
 
-  // Confirm that this winner:
-  // - exists,
-  // - belongs to the current user, and
-  // - is currently eligible to submit proof.
+  // Verify that the winner belongs to the current user.
   const {
     data: winner,
-    error,
+    error: winnerError,
   } = await admin
     .from("winners")
     .select("id")
@@ -73,57 +69,62 @@ export async function submitWinnerProof(formData: FormData) {
     ])
     .single();
 
-  // Prevent users from submitting proof for an invalid
-  // or ineligible winner record.
-  if (error || !winner) {
+  if (winnerError || !winner) {
     throw new Error(
       "Winner is not eligible for proof submission."
     );
   }
 
-  // Generate a unique storage path for the proof image.
+  // Keep the extension from the uploaded file.
   const extension =
-    file.name.split(".").pop() || "png";
+    file.name.split(".").pop()?.toLowerCase() || "png";
 
-  const path = `${user.id}/${winnerId}-${Date.now()}.${extension}`;
+  // Create a unique storage path.
+  //
+  // IMPORTANT:
+  // This is the value that will be stored in `proof_path`.
+  // It is NOT a complete URL.
+  const storagePath =
+    `${user.id}/${winnerId}-${Date.now()}.${extension}`;
 
-  // Upload the proof image to the private/admin-managed
-  // "winner-proofs" storage bucket.
+  // Upload to the private winner-proofs bucket.
   const { error: uploadError } = await admin.storage
     .from("winner-proofs")
-    .upload(path, file, {
+    .upload(storagePath, file, {
       contentType: file.type,
       upsert: false,
     });
 
-  // Handle storage upload errors.
   if (uploadError) {
     throw new Error(uploadError.message);
   }
 
-  // Generate the public URL for the uploaded proof.
-  const { data: urlData } = admin.storage
-    .from("winner-proofs")
-    .getPublicUrl(path);
-
-  // Update the winner record with the proof URL and move
-  // the verification state to "submitted".
+  // Store ONLY the storage path.
+  //
+  // Do NOT use getPublicUrl() here.
   const { error: updateError } = await admin
     .from("winners")
     .update({
-      proof_path: urlData.publicUrl,
+      proof_path: storagePath,
       verification_status: "submitted",
       admin_note: null,
     })
     .eq("id", winnerId)
     .eq("user_id", user.id);
 
-  // Handle database update errors.
   if (updateError) {
+    // If database update fails, remove the uploaded file
+    // so we don't leave an orphaned object in Storage.
+    await admin.storage
+      .from("winner-proofs")
+      .remove([storagePath]);
+
     throw new Error(updateError.message);
   }
 
-  // Refresh the winnings dashboard so the new proof status
-  // is displayed immediately.
+  // Refresh the winnings page.
   revalidatePath("/dashboard/winnings");
+
+  // Also refresh the admin winner page.
+  revalidatePath("/admin/winners");
 }

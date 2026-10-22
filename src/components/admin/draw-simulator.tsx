@@ -80,8 +80,8 @@ export function DrawSimulator({ draw }: { draw: Draw }) {
   const isCompleted = draw.status === "completed";
 
   return (
-    <div className="mt-4 rounded-xl border bg-muted/20 p-5">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="rounded-2xl border border-black/10 bg-[#fafaf7] p-5">
+      <div className="flex flex-col gap-4 border-b border-black/10 pb-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h4 className="font-semibold">
             {isCompleted ? "Draw Results" : "Draw Control & Simulation"}
@@ -146,7 +146,7 @@ export function DrawSimulator({ draw }: { draw: Draw }) {
 
       {/* Simulation results card */}
       {simulation && !isCompleted && (
-        <div className="mt-5 rounded-xl border bg-background p-4 shadow-sm">
+        <div className="mt-5 rounded-2xl border border-black/10 bg-white p-5 shadow-sm">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b pb-4">
             <div>
               <p className="text-xs font-medium text-muted-foreground">

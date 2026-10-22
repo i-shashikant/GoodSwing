@@ -12,103 +12,58 @@ export function CreateCharityForm() {
     startTransition(async () => {
       try {
         await createCharity(formData);
-
         formRef.current?.reset();
-
         toast.success("Charity created");
       } catch (error) {
-        toast.error(
-          error instanceof Error
-            ? error.message
-            : "Couldn't create charity."
-        );
+        toast.error(error instanceof Error ? error.message : "Couldn't create charity.");
       }
     });
   }
 
   return (
-    <form
-      ref={formRef}
-      action={handleSubmit}
-      className="mt-10 rounded-2xl border p-6"
-    >
-      <h2 className="text-xl font-semibold">
-        Add a charity
-      </h2>
-
-      <div className="mt-6 grid gap-5 md:grid-cols-2">
-        <div>
-          <label className="text-sm font-medium">
-            Charity name
-          </label>
-
-          <input
-            name="name"
-            required
-            placeholder="e.g. Green Horizons Foundation"
-            className="mt-2 w-full rounded-xl border bg-transparent px-4 py-3 outline-none focus:ring-2"
-          />
-        </div>
-
-        <div>
-          <label className="text-sm font-medium">
-            Category
-          </label>
-
-          <input
-            name="category"
-            placeholder="Environment"
-            className="mt-2 w-full rounded-xl border bg-transparent px-4 py-3 outline-none focus:ring-2"
-          />
-        </div>
-
-        <div className="md:col-span-2">
-          <label className="text-sm font-medium">
-            Description
-          </label>
-
-          <textarea
-            name="description"
-            required
-            rows={3}
-            placeholder="What does this charity support?"
-            className="mt-2 w-full rounded-xl border bg-transparent px-4 py-3 outline-none focus:ring-2"
-          />
-        </div>
-
-        <div>
-          <label className="text-sm font-medium">
-            Website
-          </label>
-
-          <input
-            name="website_url"
-            type="url"
-            placeholder="https://example.org"
-            className="mt-2 w-full rounded-xl border bg-transparent px-4 py-3 outline-none focus:ring-2"
-          />
-        </div>
-
-        <label className="flex items-center gap-3 self-end pb-3">
-          <input
-            type="checkbox"
-            name="featured"
-            className="h-4 w-4"
-          />
-
-          <span className="text-sm">
-            Featured charity
-          </span>
-        </label>
+    <form ref={formRef} action={handleSubmit} className="mt-10 rounded-3xl border border-white/10 bg-white/[.025] p-6 md:p-7">
+      <div>
+        <p className="text-[10px] font-black uppercase tracking-[.2em] text-emerald-300">New cause</p>
+        <h2 className="mt-2 text-2xl font-semibold text-white">Add a charity</h2>
+        <p className="mt-1 text-sm text-white/45">Create a cause that members can discover and support.</p>
       </div>
 
-      <button
-        type="submit"
-        disabled={isPending}
-        className="mt-6 rounded-xl bg-foreground px-5 py-3 font-medium text-background disabled:opacity-50"
-      >
-        {isPending ? "Creating..." : "Create charity"}
-      </button>
+      <div className="mt-7 grid gap-5 md:grid-cols-2">
+        <Field label="Charity name">
+          <input name="name" required placeholder="e.g. Green Horizons Foundation" className="admin-input" />
+        </Field>
+        <Field label="Category">
+          <input name="category" placeholder="Environment" className="admin-input" />
+        </Field>
+        <Field label="Description" className="md:col-span-2">
+          <textarea name="description" required rows={3} placeholder="What does this charity support?" className="admin-input min-h-28 resize-y" />
+        </Field>
+        <Field label="Website">
+          <input name="website_url" type="url" placeholder="https://example.org" className="admin-input" />
+        </Field>
+        <Field label="Image URL">
+          <input name="image_url" type="url" placeholder="https://example.org/image.jpg" className="admin-input" />
+        </Field>
+      </div>
+
+      <div className="mt-5 flex flex-wrap items-center justify-between gap-4">
+        <label className="flex items-center gap-3 text-sm text-white/70">
+          <input type="checkbox" name="featured" className="h-4 w-4 accent-emerald-400" />
+          Featured charity
+        </label>
+        <button type="submit" disabled={isPending} className="admin-primary-button">
+          {isPending ? "Creating…" : "Create charity"}
+        </button>
+      </div>
     </form>
+  );
+}
+
+function Field({ label, children, className = "" }: { label: string; children: React.ReactNode; className?: string }) {
+  return (
+    <label className={className}>
+      <span className="text-sm font-medium text-white/80">{label}</span>
+      <span className="mt-2 block">{children}</span>
+    </label>
   );
 }

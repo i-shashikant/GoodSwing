@@ -198,3 +198,11 @@ grant select
 on public.payments,
    public.subscriptions
 to authenticated;
+-- ------------------------------------------------------------
+-- 15. WINNER PAYOUT REFERENCE
+-- ------------------------------------------------------------
+
+-- Stores the admin-entered bank/UPI/payment reference used to
+-- reconcile a winner payout after it is marked as paid.
+alter table public.winners
+add column if not exists payment_reference text;

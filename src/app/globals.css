@@ -30,3 +30,21 @@ button, input { font: inherit; }
   html { scroll-behavior:auto; }
   *, *::before, *::after { animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.01ms !important; }
 }
+
+/* Admin system */
+.admin-main { min-height: 100vh; background: #20211f; color: #f7f7f2; }
+.admin-container { width: min(1180px, calc(100% - 48px)); margin: 0 auto; padding: 48px 0 72px; }
+.admin-title { margin-top: 8px; font-size: clamp(2.25rem, 5vw, 3.5rem); font-weight: 700; letter-spacing: -.05em; line-height: 1.05; }
+.admin-subtitle { margin-top: 12px; max-width: 700px; color: rgb(255 255 255 / .48); font-size: .95rem; line-height: 1.6; }
+.admin-input { width: 100%; border: 1px solid rgb(255 255 255 / .14); border-radius: 12px; background: rgb(255 255 255 / .025); color: white; padding: 11px 13px; outline: none; }
+.admin-input::placeholder { color: rgb(255 255 255 / .28); }
+.admin-input:focus { border-color: rgb(110 231 183 / .45); box-shadow: 0 0 0 3px rgb(110 231 183 / .07); }
+.admin-primary-button { display: inline-flex; align-items: center; justify-content: center; border-radius: 12px; background: #087f4e; color: white; padding: 10px 16px; font-size: .875rem; font-weight: 700; transition: .2s; }
+.admin-primary-button:hover { background: #09955c; }
+.admin-primary-button:disabled { opacity: .5; }
+.admin-outline-button, .admin-danger-button { display: inline-flex; align-items: center; justify-content: center; border: 1px solid rgb(255 255 255 / .15); border-radius: 11px; background: transparent; color: white; padding: 9px 13px; font-size: .8rem; font-weight: 600; transition: .2s; }
+.admin-outline-button:hover { background: rgb(255 255 255 / .06); border-color: rgb(255 255 255 / .24); }
+.admin-danger-button { border-color: rgb(248 113 113 / .25); color: #fca5a5; }
+.admin-danger-button:hover { background: rgb(248 113 113 / .08); }
+.admin-chip { display: inline-flex; align-items: center; border: 1px solid rgb(255 255 255 / .1); border-radius: 999px; background: rgb(255 255 255 / .04); padding: 4px 9px; font-size: 10px; font-weight: 700; color: rgb(255 255 255 / .6); }
+@media (max-width: 767px) { .admin-container { width: min(100% - 28px, 1180px); padding-top: 28px; } }
