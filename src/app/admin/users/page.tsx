@@ -124,6 +124,12 @@ export default async function AdminUsersPage() {
                     ADMIN ACTIONS
                     ================================================= */}
                 <div className="flex flex-wrap gap-2">
+                  <Link
+                    href={`/admin/users/${user.id}`}
+                    className="rounded-lg bg-[#176b45] px-3 py-2 text-xs font-medium text-white"
+                  >
+                    Manage
+                  </Link>
                   {/* Toggle between admin and subscriber roles */}
                   <form action={setUserRole}>
                     <input
