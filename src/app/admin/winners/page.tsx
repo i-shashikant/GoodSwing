@@ -28,7 +28,7 @@ export default async function AdminWinnersPage() {
   const { data: winners, error } = await admin
     .from("winners")
     .select(
-      "id,user_id,match_count,prize_amount,verification_status,payment_status,proof_path,admin_note,payment_reference,created_at,draws(draw_month,draw_date,number_1,number_2,number_3,number_4,number_5)"
+      "id,user_id,match_count,prize_amount,verification_status,payment_status,proof_path,admin_note,payment_reference,created_at,profiles(full_name,email),draws(draw_month,draw_date,number_1,number_2,number_3,number_4,number_5)"
     )
     .order("created_at", { ascending: false });
 
