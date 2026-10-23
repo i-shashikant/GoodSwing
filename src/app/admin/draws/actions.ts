@@ -9,37 +9,42 @@ import {
   DrawMethod,
 } from "@/lib/draw-engine";
 
+/**
+ * --------------------------------------------------------------------------
+ * ADMIN AUTHENTICATION
+ * --------------------------------------------------------------------------
+ *
+ * Makes sure:
+ * 1. A user is logged in.
+ * 2. The logged-in user's profile has the "admin" role.
+ *
+ * All admin server actions use this function before touching admin data.
+ */
 async function requireAdmin() {
-  const supabase =
-    await createClient();
+  const supabase = await createClient();
 
+  // Get the currently authenticated Supabase user.
   const {
     data: { user },
-  } =
-    await supabase.auth.getUser();
+  } = await supabase.auth.getUser();
 
   if (!user) {
-    throw new Error(
-      "Unauthorized"
-    );
+    throw new Error("Unauthorized");
   }
 
-  const {
-    data: profile,
-  } =
-    await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
+  // Check the user's role in our profiles table.
+  const { data: profile, error } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
 
-  if (
-    profile?.role !==
-    "admin"
-  ) {
-    throw new Error(
-      "Admin access required"
-    );
+  if (error) {
+    throw new Error("Unable to verify admin access.");
+  }
+
+  if (profile?.role !== "admin") {
+    throw new Error("Admin access required");
   }
 
   return {
@@ -48,311 +53,372 @@ async function requireAdmin() {
   };
 }
 
-export async function createDraw(
-  formData: FormData
-) {
-  const {
-    supabase,
-    user,
-  } = await requireAdmin();
+/**
+ * --------------------------------------------------------------------------
+ * CREATE DRAW
+ * --------------------------------------------------------------------------
+ *
+ * Creates a new monthly draw in "draft" status.
+ *
+ * Important:
+ * Expected validation problems are returned as structured errors instead
+ * of being thrown. This prevents the admin page from falling into a
+ * Next.js error state for normal user mistakes.
+ */
+export async function createDraw(formData: FormData) {
+  const { supabase, user } = await requireAdmin();
 
-  const drawMonth =
-    String(
-      formData.get(
-        "draw_month"
-      ) || ""
-    ).trim();
+  // ------------------------------------------------------------------------
+  // Read form values
+  // ------------------------------------------------------------------------
 
-  const drawDate =
-    String(
-      formData.get(
-        "draw_date"
-      ) || ""
-    ).trim();
+  const drawMonth = String(
+    formData.get("draw_month") || ""
+  ).trim();
 
-  const drawMethod =
-    String(
-      formData.get(
-        "draw_method"
-      ) || "random"
-    ).trim();
+  const drawDate = String(
+    formData.get("draw_date") || ""
+  ).trim();
 
-  const prizePool =
-    Number(
-      formData.get(
-        "prize_pool"
-      ) || 0
-    );
+  const drawMethod = String(
+    formData.get("draw_method") || "random"
+  ).trim();
 
-  // ----------------------------------------------------------
+  const prizePool = Number(
+    formData.get("prize_pool") || 0
+  );
+
+  // ------------------------------------------------------------------------
   // Validation
-  // ----------------------------------------------------------
+  // ------------------------------------------------------------------------
 
   if (!drawMonth) {
-    throw new Error(
-      "Draw month is required."
-    );
+    return {
+      success: false,
+      error: "Draw month is required.",
+    };
   }
 
   if (!drawDate) {
-    throw new Error(
-      "Draw date is required."
-    );
+    return {
+      success: false,
+      error: "Draw date is required.",
+    };
   }
 
-  if (
-    ![
-      "random",
-      "weighted",
-    ].includes(drawMethod)
-  ) {
-    throw new Error(
-      "Invalid draw method. Must be random or weighted."
-    );
+  if (!["random", "weighted"].includes(drawMethod)) {
+    return {
+      success: false,
+      error: "Invalid draw method. Must be random or weighted.",
+    };
   }
 
-  if (
-    !Number.isFinite(
-      prizePool
-    ) ||
-    prizePool < 0
-  ) {
-    throw new Error(
-      "Prize pool cannot be negative."
-    );
+  if (!Number.isFinite(prizePool) || prizePool < 0) {
+    return {
+      success: false,
+      error: "Prize pool cannot be negative.",
+    };
   }
 
-  const drawMonthDate =
-    `${drawMonth}-01`;
+  // ------------------------------------------------------------------------
+  // Convert the month into the database format.
+  //
+  // Example:
+  // "2026-10" -> "2026-10-01"
+  // ------------------------------------------------------------------------
 
-  const parsedDrawDate =
-    new Date(drawDate);
+  const drawMonthDate = `${drawMonth}-01`;
 
-  if (
-    Number.isNaN(
-      parsedDrawDate.getTime()
-    )
-  ) {
-    throw new Error(
-      "Invalid draw date."
-    );
+  // Parse the draw date.
+  const parsedDrawDate = new Date(drawDate);
+
+  if (Number.isNaN(parsedDrawDate.getTime())) {
+    return {
+      success: false,
+      error: "Invalid draw date.",
+    };
   }
 
-  // ----------------------------------------------------------
+  // ------------------------------------------------------------------------
   // Prevent duplicate monthly draws
-  // ----------------------------------------------------------
+  // ------------------------------------------------------------------------
+  //
+  // We only need to know whether ONE matching draw exists.
+  //
+  // The `.limit(1)` is important because it makes this lookup safer even
+  // if the database somehow contains duplicate rows already.
+  // ------------------------------------------------------------------------
 
   const {
     data: existingDraw,
-  } =
-    await supabase
-      .from("draws")
-      .select("id")
-      .eq(
-        "draw_month",
-        drawMonthDate
-      )
-      .maybeSingle();
+    error: existingDrawError,
+  } = await supabase
+    .from("draws")
+    .select("id")
+    .eq("draw_month", drawMonthDate)
+    .limit(1)
+    .maybeSingle();
 
-  if (existingDraw) {
-    throw new Error(
-      "A draw already exists for this month."
+  // If Supabase itself failed while checking for the draw, return a normal
+  // application error rather than allowing an unexplained crash.
+  if (existingDrawError) {
+    console.error(
+      "Error checking for existing draw:",
+      existingDrawError
     );
+
+    return {
+      success: false,
+      error: "Unable to check whether a draw already exists.",
+    };
   }
 
-  // ----------------------------------------------------------
+  // ------------------------------------------------------------------------
+  // DUPLICATE DRAW
+  // ------------------------------------------------------------------------
+  //
+  // This is an expected user error.
+  //
+  // DO NOT throw here.
+  //
+  // Returning an object allows the client-side form to show a toast instead
+  // of Next.js rendering an error page.
+  // ------------------------------------------------------------------------
+
+  if (existingDraw) {
+    return {
+      success: false,
+      error: "A draw already exists for this month.",
+    };
+  }
+
+  // ------------------------------------------------------------------------
   // Automatically get previous jackpot rollover
-  // ----------------------------------------------------------
+  // ------------------------------------------------------------------------
+  //
+  // We look for the most recent completed draw before the current month.
+  // Its jackpot_rollover_out becomes the rollover amount for this draw.
+  // ------------------------------------------------------------------------
 
   const {
     data: previousDraw,
-  } =
-    await supabase
-      .from("draws")
-      .select(
-        "jackpot_rollover_out"
-      )
-      .eq(
-        "status",
-        "completed"
-      )
-      .lt(
-        "draw_month",
-        drawMonthDate
-      )
-      .order(
-        "draw_month",
-        {
-          ascending:
-            false,
-        }
-      )
-      .limit(1)
-      .maybeSingle();
+    error: previousDrawError,
+  } = await supabase
+    .from("draws")
+    .select("jackpot_rollover_out")
+    .eq("status", "completed")
+    .lt("draw_month", drawMonthDate)
+    .order("draw_month", {
+      ascending: false,
+    })
+    .limit(1)
+    .maybeSingle();
 
-  const jackpotRollover =
-    Number(
-      previousDraw
-        ?.jackpot_rollover_out ??
-        0
+  if (previousDrawError) {
+    console.error(
+      "Error fetching previous draw:",
+      previousDrawError
     );
 
-  // ----------------------------------------------------------
-  // Create draft
-  // ----------------------------------------------------------
-
-  const {
-    error,
-  } =
-    await supabase
-      .from("draws")
-      .insert({
-        draw_month:
-          drawMonthDate,
-
-        draw_date:
-          parsedDrawDate.toISOString(),
-
-        status:
-          "draft",
-
-        draw_method:
-          drawMethod,
-
-        prize_pool:
-          prizePool,
-
-        jackpot_rollover:
-          jackpotRollover,
-
-        jackpot_rollover_out:
-          0,
-
-        created_by:
-          user.id,
-      });
-
-  if (error) {
-    throw new Error(
-      error.message
-    );
+    return {
+      success: false,
+      error: "Unable to calculate the previous jackpot rollover.",
+    };
   }
 
-  revalidatePath(
-    "/admin"
+  const jackpotRollover = Number(
+    previousDraw?.jackpot_rollover_out ?? 0
   );
 
-  revalidatePath(
-    "/admin/draws"
-  );
+  // ------------------------------------------------------------------------
+  // Create the new draft draw
+  // ------------------------------------------------------------------------
 
-  revalidatePath(
-    "/dashboard"
-  );
+  const { error } = await supabase
+    .from("draws")
+    .insert({
+      // Example: 2026-10-01
+      draw_month: drawMonthDate,
+
+      // Actual draw date.
+      draw_date: parsedDrawDate.toISOString(),
+
+      // New draws always start as drafts.
+      status: "draft",
+
+      // random / weighted
+      draw_method: drawMethod,
+
+      // Prize pool supplied by admin.
+      prize_pool: prizePool,
+
+      // Previous month's rollover.
+      jackpot_rollover: jackpotRollover,
+
+      // New draw has not rolled anything out yet.
+      jackpot_rollover_out: 0,
+
+      // Admin who created the draw.
+      created_by: user.id,
+    });
+
+  // ------------------------------------------------------------------------
+  // Handle database errors
+  // ------------------------------------------------------------------------
+
+  if (error) {
+    console.error("Error creating draw:", error);
+
+    return {
+      success: false,
+      error: error.message || "Unable to create draw.",
+    };
+  }
+
+  // ------------------------------------------------------------------------
+  // Refresh pages that display draw information
+  // ------------------------------------------------------------------------
+
+  revalidatePath("/admin");
+  revalidatePath("/admin/draws");
+  revalidatePath("/dashboard");
+
+  // ------------------------------------------------------------------------
+  // Success response
+  // ------------------------------------------------------------------------
+
+  return {
+    success: true,
+    message: "Draw created successfully.",
+  };
 }
 
+/**
+ * --------------------------------------------------------------------------
+ * UPDATE DRAW STATUS
+ * --------------------------------------------------------------------------
+ *
+ * Changes a draw between:
+ *
+ * draft -> open -> closed -> completed
+ *
+ * Completed draws cannot be modified.
+ */
 export async function updateDrawStatus(
   drawId: string,
   status: string
 ) {
-  const {
-    supabase,
-  } = await requireAdmin();
+  const { supabase } = await requireAdmin();
 
-  const allowedStatuses =
-    [
-      "draft",
-      "open",
-      "closed",
-      "completed",
-    ];
+  // Only these statuses are allowed.
+  const allowedStatuses = [
+    "draft",
+    "open",
+    "closed",
+    "completed",
+  ];
 
-  if (
-    !allowedStatuses.includes(
-      status
-    )
-  ) {
-    throw new Error(
-      "Invalid draw status."
-    );
+  if (!allowedStatuses.includes(status)) {
+    return {
+      success: false,
+      error: "Invalid draw status.",
+    };
   }
 
-  // Don't allow changes to a completed draw.
-  if (
-    status !==
-    "completed"
-  ) {
-    const {
-      data: existingDraw,
-    } =
-      await supabase
-        .from("draws")
-        .select(
-          "status"
-        )
-        .eq(
-          "id",
-          drawId
-        )
-        .single();
-
-    if (
-      existingDraw?.status ===
-      "completed"
-    ) {
-      throw new Error(
-        "Completed draws cannot be modified."
-      );
-    }
-  }
+  // ------------------------------------------------------------------------
+  // Check existing draw
+  // ------------------------------------------------------------------------
 
   const {
-    error,
-  } =
-    await supabase
-      .from("draws")
-      .update({
-        status,
+    data: existingDraw,
+    error: existingDrawError,
+  } = await supabase
+    .from("draws")
+    .select("status")
+    .eq("id", drawId)
+    .single();
 
-        updated_at:
-          new Date().toISOString(),
-      })
-      .eq(
-        "id",
-        drawId
-      );
+  if (existingDrawError || !existingDraw) {
+    return {
+      success: false,
+      error: "Draw not found.",
+    };
+  }
+
+  // ------------------------------------------------------------------------
+  // Completed draws are locked.
+  // ------------------------------------------------------------------------
+
+  if (
+    existingDraw.status === "completed" &&
+    status !== "completed"
+  ) {
+    return {
+      success: false,
+      error: "Completed draws cannot be modified.",
+    };
+  }
+
+  // ------------------------------------------------------------------------
+  // Update status
+  // ------------------------------------------------------------------------
+
+  const { error } = await supabase
+    .from("draws")
+    .update({
+      status,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", drawId);
 
   if (error) {
-    throw new Error(
-      error.message
-    );
+    console.error("Error updating draw status:", error);
+
+    return {
+      success: false,
+      error: error.message || "Unable to update draw status.",
+    };
   }
 
-  revalidatePath(
-    "/admin"
-  );
+  // ------------------------------------------------------------------------
+  // Revalidate affected pages
+  // ------------------------------------------------------------------------
 
-  revalidatePath(
-    "/admin/draws"
-  );
+  revalidatePath("/admin");
+  revalidatePath("/admin/draws");
+  revalidatePath("/dashboard");
 
-  revalidatePath(
-    "/dashboard"
-  );
+  return {
+    success: true,
+    message: "Draw status updated successfully.",
+  };
 }
 
+/**
+ * --------------------------------------------------------------------------
+ * RUN DRAW SIMULATION
+ * --------------------------------------------------------------------------
+ *
+ * Simulates a draw without publishing the final result.
+ */
 export async function runSimulation(
   drawId: string,
   method?: DrawMethod
 ) {
+  // Make sure only an admin can run simulations.
   await requireAdmin();
 
-  return simulateDraw(
-    drawId,
-    method
-  );
+  // The draw engine handles the actual simulation logic.
+  return simulateDraw(drawId, method);
 }
 
+/**
+ * --------------------------------------------------------------------------
+ * PUBLISH DRAW
+ * --------------------------------------------------------------------------
+ *
+ * Executes the final draw and publishes the winners.
+ */
 export async function publishDraw(
   drawId: string,
   method: DrawMethod,
@@ -364,30 +430,21 @@ export async function publishDraw(
     number
   ]
 ) {
+  // Make sure only an admin can publish a draw.
   await requireAdmin();
 
-  const result =
-    await executeAndPublishDraw(
-      drawId,
-      method,
-      numbers
-    );
-
-  revalidatePath(
-    "/admin"
+  // Execute the draw through the draw engine.
+  const result = await executeAndPublishDraw(
+    drawId,
+    method,
+    numbers
   );
 
-  revalidatePath(
-    "/admin/draws"
-  );
-
-  revalidatePath(
-    "/admin/winners"
-  );
-
-  revalidatePath(
-    "/dashboard"
-  );
+  // Refresh all pages affected by the published draw.
+  revalidatePath("/admin");
+  revalidatePath("/admin/draws");
+  revalidatePath("/admin/winners");
+  revalidatePath("/dashboard");
 
   return result;
 }
