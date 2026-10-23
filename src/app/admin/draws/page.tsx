@@ -196,7 +196,9 @@ export default async function AdminDrawsPage() {
           </div>
 
           <form
-            action={createDraw}
+            action={async (formData) => {
+              await createDraw(formData);
+            }}
             className="grid gap-5 px-6 py-6 md:grid-cols-2 md:px-8"
           >
             <div>
