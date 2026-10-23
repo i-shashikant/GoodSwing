@@ -42,12 +42,34 @@ export default async function AdminWinnersPage() {
   const paid = rows.filter((w) => w.payment_status === "paid");
   const totalAwarded = rows.reduce((sum, w) => sum + Number(w.prize_amount || 0), 0);
 
-  const proofUrls = new Map<string, string>();
-  for (const winner of rows) {
-    if (!winner.proof_path) continue;
-    const { data } = await admin.storage.from("winner-proofs").createSignedUrl(winner.proof_path, 60 * 60);
-    if (data?.signedUrl) proofUrls.set(winner.id, data.signedUrl);
+  const proofUrlResults = await Promise.all(
+  rows
+    .filter((winner) => winner.proof_path)
+    .map(async (winner) => {
+      const { data } = await admin.storage
+        .from("winner-proofs")
+        .createSignedUrl(
+          winner.proof_path!,
+          60 * 60
+        );
+
+      return {
+        winnerId: winner.id,
+        signedUrl: data?.signedUrl ?? null,
+      };
+    })
+);
+
+const proofUrls = new Map<string, string>();
+
+for (const result of proofUrlResults) {
+  if (result.signedUrl) {
+    proofUrls.set(
+      result.winnerId,
+      result.signedUrl
+    );
   }
+}
 
   return (
     <main className="admin-main">
