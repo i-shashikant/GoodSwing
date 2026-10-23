@@ -567,35 +567,72 @@ export default function SubscriptionCheckout({
           </p>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-          {[10, 25, 50, 75, 100].map(
-            (percentage) => {
-              const isSelected =
-                charityPercentage ===
-                percentage;
+        <div className="rounded-3xl border border-white/[0.08] bg-white/[0.02] p-6">
+          <div className="flex items-end justify-between gap-4">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.16em] text-white/30">
+                Charity contribution
+              </p>
 
-              return (
-                <button
-                  key={percentage}
-                  type="button"
-                  disabled={loading}
-                  onClick={() =>
-                    setCharityPercentage(
-                      percentage
-                    )
-                  }
-                  className={`rounded-2xl border px-4 py-4 text-sm font-bold transition-all duration-200 ${
-                    isSelected
-                      ? "border-amber-300/60 bg-amber-300/10 text-amber-200 shadow-[0_0_25px_rgba(252,211,77,0.06)]"
-                      : "border-white/[0.08] bg-white/[0.02] text-white/40 hover:border-amber-300/25 hover:bg-amber-300/[0.03] hover:text-amber-200"
-                  }`}
-                >
-                  {percentage}%
-                </button>
-              );
-            }
-          )}
+              <p className="mt-2 text-sm text-white/40">
+                Choose the percentage of your membership that should support
+                your selected cause.
+              </p>
+            </div>
+
+            <div className="shrink-0 text-right">
+              <span className="text-4xl font-black tracking-tight text-amber-200">
+                {charityPercentage}%
+              </span>
+            </div>
+          </div>
+
+          <div className="mt-8">
+            <input
+              type="range"
+              min="10"
+              max="100"
+              step="1"
+              value={charityPercentage}
+              disabled={loading}
+              onChange={(event) =>
+                setCharityPercentage(Number(event.target.value))
+              }
+              aria-label="Charity contribution percentage"
+              className="h-2 w-full cursor-pointer appearance-none rounded-full bg-white/[0.08] accent-amber-300 disabled:cursor-not-allowed disabled:opacity-50"
+            />
+
+            <div className="mt-3 flex justify-between text-[10px] font-bold uppercase tracking-wider text-white/25">
+              <span>10%</span>
+              <span>100%</span>
+            </div>
+          </div>
+
+          <div className="mt-6 flex items-center justify-between rounded-2xl border border-amber-300/10 bg-amber-300/[0.035] px-4 py-3">
+            <div className="flex items-center gap-3">
+              <div className="grid h-9 w-9 place-items-center rounded-xl bg-amber-300/10 text-amber-200">
+                <Heart className="h-4 w-4" />
+              </div>
+
+              <div>
+                <p className="text-sm font-bold">
+                  Your impact
+                </p>
+
+                <p className="mt-1 text-xs text-white/35">
+                  {charityPercentage}% of your membership goes to{" "}
+                  {selectedCharity?.name ?? "your selected cause"}.
+                </p>
+              </div>
+            </div>
+
+            <span className="text-sm font-black text-amber-200">
+              {charityPercentage}%
+            </span>
+          </div>
         </div>
+        
+        
       </section>
 
       {/* =========================================================
